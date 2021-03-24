@@ -8,6 +8,10 @@
 
 namespace Propel\Tests\Generator\Behavior\AggregateColumn;
 
+use Propel\Generator\Behavior\AggregateColumn\AggregateColumnBehavior;
+use Propel\Generator\Builder\Om\ObjectBuilder;
+use Propel\Generator\Builder\Util\SchemaReader;
+use Propel\Generator\Platform\DefaultPlatform;
 use Propel\Tests\Bookstore\Behavior\AggregateComment;
 use Propel\Tests\Bookstore\Behavior\AggregateCommentQuery;
 use Propel\Tests\Bookstore\Behavior\AggregateItem;
@@ -265,5 +269,55 @@ class AggregateColumnBehaviorTest extends BookstoreTestBase
         $item2->save($this->con);
 
         return [$poll, $item1, $item2];
+    }
+
+    /**
+     * @return void
+     */
+    public function testEscapeQuotesInCondition()
+    {
+        $schema = <<<EOF
+<database name="test1">
+
+  <table name="source_table">
+    <column name="aggregation_table_id" phpName="AggregationTableId" type="INTEGER" />
+    <column name="sex" phpName="Sex" type="CHAR" sqlType="set('male','female','divers')" defaultValue="null" />
+
+    <foreign-key foreignTable="aggregation_table" phpName="aggregates">
+        <reference local="aggregation_table_id" foreign="id"/>
+    </foreign-key>
+
+  </table>
+
+  <table name="aggregation_table">
+    <column name="id" phpName="Id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true" />
+
+    <behavior name="aggregate_column">
+      <parameter name="foreign_table" value="source_table"/>
+      <parameter name="condition" value="sex = 'male'"/>
+      <parameter name="name" value="number_of_males"/>
+      <parameter name="expression" value="COUNT(*)"/>
+    </behavior>
+  </table>
+
+</database>
+EOF;
+        $schemaReader = new SchemaReader(new DefaultPlatform());
+        $appData = $schemaReader->parseString($schema);
+        $table = $appData->getDatabase('test1')->getTable('aggregation_table');
+
+        $behavior = $table->getBehaviors()['aggregate_column'];
+
+        $methodAccessor = new class () extends AggregateColumnBehavior{
+            public function getAggregationMethodCodeBuilder(AggregateColumnBehavior $behavior): string
+            {
+                $objectBuilder = new ObjectBuilder($behavior->getTable());
+
+                return $behavior->addObjectCompute($objectBuilder);
+            }
+        };
+        $generatedMethod = $methodAccessor->getAggregationMethodCodeBuilder($behavior);
+        $expectedCondition = 'SELECT COUNT(*) FROM source_table WHERE sex = \\\'male\\\' AND source_table.AGGREGATION_TABLE_ID = :p1';
+        $this->assertStringContainsString($expectedCondition, $generatedMethod);
     }
 }

@@ -43,6 +43,21 @@ class AggregateColumnBehavior extends Behavior
     }
 
     /**
+     * @see \Propel\Generator\Model\Behavior::addParameter()
+     *
+     * @param array $parameter
+     *
+     * @return void
+     */
+    public function addParameter(array $parameter)
+    {
+        if ($parameter['name'] === 'condition') {
+            $parameter['value'] = addcslashes($parameter['value'], "'");
+        }
+        parent::addParameter($parameter);
+    }
+
+    /**
      * Add the aggregate key to the current table
      *
      * @throws \InvalidArgumentException
@@ -130,12 +145,11 @@ class AggregateColumnBehavior extends Behavior
                 . $tableName;
         }
 
-        $sql = sprintf(
-            'SELECT %s FROM %s WHERE %s',
-            $this->getParameter('expression'),
-            $builder->getTable()->quoteIdentifier($tableName),
-            implode(' AND ', $conditions)
-        );
+        $statement = 'SELECT %s FROM %s WHERE %s';
+        $select = $this->getParameter('expression');
+        $from = $builder->getTable()->quoteIdentifier($tableName);
+        $where = implode(' AND ', $conditions);
+        $sql = sprintf($statement, $select, $from, $where);
 
         return $this->renderTemplate('objectCompute', [
             'column' => $this->getColumn(),

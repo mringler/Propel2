@@ -64,6 +64,21 @@ class AggregateMultipleColumnsBehavior extends Behavior
     }
 
     /**
+     * @see \Propel\Generator\Model\Behavior::addParameter()
+     *
+     * @param array $parameter
+     *
+     * @return void
+     */
+    public function addParameter(array $parameter)
+    {
+        if ($parameter['name'] === self::PARAMETER_KEY_CONDITION) {
+            $parameter['value'] = addcslashes($parameter['value'], "'");
+        }
+        parent::addParameter($parameter);
+    }
+
+    /**
      * @return string
      */
     public function getAggregationName(): string
@@ -221,12 +236,11 @@ class AggregateMultipleColumnsBehavior extends Behavior
 
         $foreignTableName = $this->getForeignTableNameFullyQualified();
 
-        $sql = sprintf(
-            'SELECT %s FROM %s WHERE %s',
-            $this->buildSelectionStatement(),
-            $builder->getTable()->quoteIdentifier($foreignTableName),
-            implode(' AND ', $conditions)
-        );
+        $statement = 'SELECT %s FROM %s WHERE %s';
+        $select = $this->buildSelectionStatement();
+        $from = $builder->getTable()->quoteIdentifier($foreignTableName);
+        $where = implode(' AND ', $conditions);
+        $sql = sprintf($statement, $select, $from, $where);
 
         return $this->renderTemplate('objectCompute', [
             'aggregationName' => $this->getAggregationName(),
