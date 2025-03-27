@@ -8,8 +8,9 @@
 
 namespace Propel\Tests\Runtime\ActiveQuery;
 
+use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\LocalColumnExpression;
+use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\RemoteTypedColumnExpression;
 use Propel\Runtime\ActiveQuery\ModelCriteria;
-use Propel\Runtime\ActiveQuery\Util\ColumnResolver;
 use Propel\Tests\Bookstore\AuthorQuery;
 use Propel\Tests\Bookstore\BookQuery;
 use Propel\Tests\TestCase;
@@ -134,6 +135,9 @@ class CriteriaReplaceNameTest extends TestCase
         $replacedColumns = $this->replaceColumns($c, $origClause);
 
         if ($columnPhpName) {
+            if (count($replacedColumns) > 1){
+                echo 'ere';
+            }
             $this->assertCount(1, $replacedColumns);
             $columnMap = $c->getTableMap()->getColumnByPhpName($columnPhpName);
             $this->assertEquals($columnMap, $replacedColumns[0]->getColumnMap());
@@ -189,30 +193,34 @@ class CriteriaReplaceNameTest extends TestCase
         $joinCondition = 'Author.Id = numberOfBooks.AuthorId';
         
         $authorQuery = AuthorQuery::create()
-        ->addSelectQuery($numberOfBooksQuery, 'numberOfBooks', false)
+        ->addSubquery($numberOfBooksQuery, 'numberOfBooks', false)
         ->where($joinCondition)
         ->withColumn('numberOfBooks.NumberOfBooks', 'NumberOfBooks');
 
         $replacedColumns = $this->replaceColumns($authorQuery, $joinCondition);        
-        $this->assertEquals('author.id = numberOfBooks.AuthorId', $joinCondition, 'Aliases from subquery should not be replaced');
+        $this->assertEquals('author.id = numberOfBooks.author_id', $joinCondition, 'Aliases from subquery should not be replaced');
 
-        $authorIdColumnMap = $authorQuery->getTableMap()->getColumnByPhpName('Id');
-        $this->assertCount(1, $replacedColumns);
-        $this->assertEquals($authorIdColumnMap, $replacedColumns[0]->getColumnMap(), 'Only own column (AuthorId) should count as replaced column');
+        $localAuthorIdMap = $authorQuery->getTableMap()->getColumn('id');
+        $localAuthorIdColumnExpression = new LocalColumnExpression($authorQuery, 'author', $localAuthorIdMap);
+        $remoteAuthorIdMap = $numberOfBooksQuery->getTableMap()->getColumn('author_id');
+        $subqueryAuthorIdColumnExpression = new RemoteTypedColumnExpression($authorQuery, 'numberOfBooks', 'author_id', \PDO::PARAM_INT, $remoteAuthorIdMap );
+        $this->assertEquals([$localAuthorIdColumnExpression, $subqueryAuthorIdColumnExpression], $replacedColumns);
     }
+
 
     /**
      * 
      * @param \Propel\Runtime\ActiveQuery\ModelCriteria $c
      * @param mixed $sql
      *
-     * @return \Propel\Runtime\ActiveQuery\Util\ResolvedColumn[]
+     * @return \Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression[]
      */
     protected function replaceColumns(ModelCriteria $c, &$sql): array
     {
-        $replacer = new ColumnResolver($c);
-        $sql = $replacer->replaceColumnNames($sql);
-        
-        return $this->getProperty(ColumnResolver::class, 'replacedColumns')->getValue($replacer);
+
+        $expr = $c->normalizeFilterExpression($sql);
+        $sql = $expr->getNormalizedFilterExpression();
+
+        return $replacedColumns = $expr->getReplacedColumns();
     }
 }

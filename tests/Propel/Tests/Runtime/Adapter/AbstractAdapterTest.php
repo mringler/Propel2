@@ -145,6 +145,6 @@ class AbstractAdapterTest extends TestCaseFixtures
         $fromClause = [];
         $selectSql = $db->createSelectSqlPart($c, $fromClause, true);
         $this->assertEquals('SELECT book.id AS book_id_1, book.id AS book_id', $selectSql, 'createSelectSqlPart() aliases all columns if passed true as last parameter');
-        $this->assertEquals([], $fromClause, 'createSelectSqlPart() does not add the tables from an all-aliased list of select columns');
+        $this->assertEquals(['book'], $fromClause, 'createSelectSqlPart() adds the tables of an all-aliased list of select columns');
     }
 }

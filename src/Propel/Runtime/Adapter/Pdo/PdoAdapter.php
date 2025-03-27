@@ -11,6 +11,7 @@ namespace Propel\Runtime\Adapter\Pdo;
 use PDO;
 use PDOException;
 use Propel\Generator\Model\PropelTypes;
+use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression;
 use Propel\Runtime\ActiveQuery\Criteria;
 use Propel\Runtime\Adapter\AdapterInterface;
 use Propel\Runtime\Adapter\Exception\AdapterException;
@@ -250,11 +251,22 @@ abstract class PdoAdapter
             $column = $text;
         }
 
-        if ($table) {
-            return $this->quoteIdentifierTable($table) . '.' . $this->quoteIdentifier($column);
+        return $this->quoteColumnIdentifier($table, $column);
+    }
+
+    /**
+     * @param string|null $tableAlias
+     * @param string $columnName
+     *
+     * @return string
+     */
+    public function quoteColumnIdentifier(?string $tableAlias, string $columnName): string
+    {
+        if ($tableAlias) {
+            return $this->quoteIdentifierTable($tableAlias) . '.' . $this->quoteIdentifier($columnName);
         }
 
-        return $this->quoteIdentifier($column);
+        return $this->quoteIdentifier($columnName);
     }
 
     /**
@@ -422,60 +434,90 @@ abstract class PdoAdapter
     public function createSelectSqlPart(Criteria $criteria, array &$fromClause, bool $aliasAll = false): string
     {
         $selectClause = [];
+        $localFromClause = [];
 
         if ($aliasAll) {
             $this->turnSelectColumnsToAliases($criteria);
             // no select columns after that, they are all aliases
         } else {
-            foreach ($criteria->getSelectColumns() as $columnName) {
-                // expect every column to be of "table.column" formation
-                // it could be a function:  e.g. MAX(books.price)
-                $selectClause[] = $columnName; // the full column name: e.g. MAX(books.price)
-
-                $parenPos = strrpos($columnName, '(');
-                $dotPos = strrpos($columnName, '.', ($parenPos !== false ? $parenPos : 0));
-
-                if ($dotPos === false) {
+            foreach ($criteria->getSelectColumnsRaw() as $column) {
+                if ($column instanceof AbstractColumnExpression) {
+                    $selectClause[] = $column->getColumnExpressionInQuery(true);
+                    $tableName = $column->getTableAlias();
+                } else {
+                    // expect every column to be of "table.column" formation
+                    // it could be a function:  e.g. MAX(books.price)
+                    $criteria->replaceColumnNames($column);
+                    $selectClause[] = $column; // the full column name: e.g. MAX(books.price)
+                    $tableName = $this->findTableNameInColumnIdentifier($column);
+                }
+                if ($tableName === null) {
                     continue;
                 }
 
-                if ($parenPos === false) { // table.column
-                    $tableName = substr($columnName, 0, $dotPos);
-                } else { // FUNC(table.column)
-                    // functions may contain qualifiers so only take the last
-                    // word as the table name.
-                    // COUNT(DISTINCT books.price)
-                    $tableName = substr($columnName, $parenPos + 1, $dotPos - ($parenPos + 1));
-                    $lastSpace = strrpos($tableName, ' ');
-                    if ($lastSpace !== false) { // COUNT(DISTINCT books.price)
-                        $tableName = substr($tableName, $lastSpace + 1);
-                    }
-                }
                 // resolve table alias
                 $sourceTableName = $criteria->getTableForAlias($tableName);
-                $fromClause[] = ($sourceTableName) ? $sourceTableName . ' ' . $tableName : $tableName;
+                $localFromClause[$sourceTableName ? $sourceTableName . ' ' . $tableName : $tableName] = 1;
             }
         }
 
         // set the aliases
         foreach ($criteria->getAsColumns() as $alias => $col) {
-            $selectClause[] = $col . ' AS ' . $alias;
+            $expression = $criteria->normalizeFilterExpression($col);
+            $selectClause[] = $expression->getNormalizedFilterExpression() . ' AS ' . $alias;
+            foreach ($expression->getReplacedColumns() as $column) {
+                $tableName = $column->getTableAlias();
+                if (!$tableName) {
+                    continue;
+                }
+                $sourceTableName = $criteria->getTableForAlias($tableName);
+                $localFromClause[$sourceTableName ? $sourceTableName . ' ' . $tableName : $tableName] = 1;
+            }
         }
 
         $selectModifiers = $criteria->getSelectModifiers();
         $queryComment = $criteria->getComment();
 
-        // Build the SQL from the arrays we compiled
-        $sql = 'SELECT '
+        array_push($fromClause, ...array_keys($localFromClause));
+
+        return 'SELECT '
             . ($queryComment ? '/* ' . $queryComment . ' */ ' : '')
             . ($selectModifiers ? (implode(' ', $selectModifiers) . ' ') : '')
             . implode(', ', $selectClause);
-
-        return $sql;
     }
 
     /**
-     * Returns all selected columns that are selected without a aggregate function.
+     * @param string $columnName
+     *
+     * @return string|null
+     */
+    protected function findTableNameInColumnIdentifier(string $columnName): ?string
+    {
+        $parenPos = strrpos($columnName, '(');
+        $dotPos = strrpos($columnName, '.', ($parenPos !== false ? $parenPos : 0));
+
+        if ($dotPos === false) {
+            return null;
+        }
+
+        if ($parenPos === false) { // table.column
+            return substr($columnName, 0, $dotPos);
+        }
+        // FUNC(table.column)
+        // functions may contain qualifiers so only take the last
+        // word as the table name.
+        // COUNT(DISTINCT books.price)
+        $tableName = substr($columnName, $parenPos + 1, $dotPos - ($parenPos + 1));
+        $lastSpace = strrpos($tableName, ' ');
+        if ($lastSpace !== false) { // COUNT(DISTINCT books.price)
+            $tableName = substr($tableName, $lastSpace + 1);
+        }
+
+        return $tableName;
+    }
+
+    /**
+     * Returns all selected columns that are selected without an aggregate function.
      *
      * @param \Propel\Runtime\ActiveQuery\Criteria $criteria
      *
@@ -511,13 +553,18 @@ abstract class PdoAdapter
      */
     public function turnSelectColumnsToAliases(Criteria $criteria): Criteria
     {
-        $selectColumns = $criteria->getSelectColumns();
+        $selectColumns = $criteria->getSelectColumnsRaw();
         // clearSelectColumns also clears the aliases, so get them too
         $asColumns = $criteria->getAsColumns();
         $criteria->clearSelectColumns();
         $columnAliases = $asColumns;
         // add the select columns back
         foreach ($selectColumns as $clause) {
+            if (!$clause instanceof AbstractColumnExpression) {
+                $clause = $criteria->replaceColumnNames($clause);
+            } else {
+                $clause = $clause->getColumnExpressionInQuery(true);
+            }
             // Generate a unique alias
             $baseAlias = preg_replace('/\W/', '_', $clause);
             $alias = $baseAlias;
@@ -573,14 +620,13 @@ abstract class PdoAdapter
 
                 continue;
             }
-            $tableName = $param['table'];
-            if ($tableName === null) {
+            if (empty($param['table']) || empty($param['column']) || !$dbMap->hasTable($param['table'])) {
                 $type = $param['type'] ?? PDO::PARAM_STR;
                 $stmt->bindValue($parameter, $value, $type);
 
                 continue;
             }
-            $cMap = $dbMap->getTable($tableName)->getColumn($param['column']);
+            $cMap = $dbMap->getTable($param['table'])->getColumn($param['column']);
             $this->bindValue($stmt, $parameter, $value, $cMap, $position);
         }
     }

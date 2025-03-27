@@ -170,7 +170,7 @@ class QueryBuilder extends AbstractOMBuilder
             '\Propel\Runtime\Propel',
             '\Propel\Runtime\ActiveQuery\ModelCriteria',
             '\Propel\Runtime\ActiveQuery\Criteria',
-            '\Propel\Runtime\ActiveQuery\Criterion\CriterionFactory',
+            '\Propel\Runtime\ActiveQuery\FilerExpression\FilterFactory',
             '\Propel\Runtime\ActiveQuery\ModelJoin',
             '\Exception',
             '\Propel\Runtime\Exception\PropelException',
@@ -897,23 +897,28 @@ class QueryBuilder extends AbstractOMBuilder
             return;
         }
 
+        $tableMapClassName = $this->getTableMapClassName();
         $pks = $table->getPrimaryKey();
         if (count($pks) === 1) {
             // simple primary key
             $col = $pks[0];
-            $const = $this->getColumnConstant($col);
+            $colName = $col->getName();
             $script .= "
-
-        \$this->addUsingAlias($const, \$key, Criteria::EQUAL);
+        \$resolvedColumn = \$this->resolveLocalColumnByName('$colName');
+        \$this->addUsingOperator(\$resolvedColumn, \$key, Criteria::EQUAL);
 
         return \$this;";
         } else {
+            $script .= "
+        \$tableMap = $tableMapClassName::getTableMap();";
             // composite primary key
             $i = 0;
             foreach ($pks as $col) {
                 $const = $this->getColumnConstant($col);
+                $colName = $col->getName();
                 $script .= "
-        \$this->addUsingAlias($const, \$key[$i], Criteria::EQUAL);";
+        \$resolvedColumn = \$this->resolveLocalColumnByName('$colName');
+        \$this->addUsingOperator(\$resolvedColumn, \$key[$i], Criteria::EQUAL);";
                 $i++;
             }
             $script .= "
@@ -956,14 +961,16 @@ class QueryBuilder extends AbstractOMBuilder
             return;
         }
 
+        $tableMapClassName = $this->getTableMapClassName();
         $pks = $table->getPrimaryKey();
         if (count($pks) === 1) {
             // simple primary key
             $col = $pks[0];
+            $colName = $col->getName();
             $const = $this->getColumnConstant($col);
             $script .= "
-
-        \$this->addUsingAlias($const, \$keys, Criteria::IN);
+        \$resolvedColumn = \$this->resolveLocalColumnByName('$colName');
+        \$this->addUsingOperator(\$resolvedColumn, \$keys, Criteria::IN);
 
         return \$this;";
         } else {
@@ -976,20 +983,17 @@ class QueryBuilder extends AbstractOMBuilder
         }
         foreach (\$keys as \$key) {";
             $i = 0;
-            foreach ($pks as $col) {
-                $const = $this->getColumnConstant($col);
+            foreach ($pks as $i => $col) {
+                $colName = $col->getName();
+                $addOp = ($i === 0) ? '$this->addOr($filter0);' : "\$filter0->addAnd(\$filter$i);";
+                ($i > 0) && $script .= "\n";
                 $script .= "
-            \$cton$i = \$this->getNewCriterion($const, \$key[$i], Criteria::EQUAL);";
-                if ($i > 0) {
-                    $script .= "
-            \$cton0->addAnd(\$cton$i);";
-                }
-                $i++;
+            \$resolvedColumn$i = \$this->resolveLocalColumnByName('$colName');
+            \$filter$i = \$this->getCriterionForCondition(\$resolvedColumn$i, \$key[$i], Criteria::EQUAL);
+            {$addOp}";
             }
             $script .= "
-            \$this->addOr(\$cton0);
-        }";
-            $script .= "
+        }
 
         return \$this;";
         }
@@ -1011,7 +1015,8 @@ class QueryBuilder extends AbstractOMBuilder
         $colPhpName = $col->getPhpName();
         $colName = $col->getName();
         $variableName = $col->getCamelCaseName();
-        $qualifiedName = $this->getColumnConstant($col);
+        $colName = $col->getName();
+        $tableMapClassName = $this->getTableMapClassName();
         $script .= "
     /**
      * Filter the query on the $colName column
@@ -1088,23 +1093,25 @@ class QueryBuilder extends AbstractOMBuilder
      * @return \$this The current query, for fluid interface
      */
     public function filterBy$colPhpName(\$$variableName = null, ?string \$comparison = null)
-    {";
+    {
+        \$resolvedColumn = \$this->resolveLocalColumnByName('$colName');";
+
         if ($col->isNumericType() || $col->isTemporalType()) {
             $script .= "
         if (is_array(\$$variableName)) {
             \$useMinMax = false;
             if (isset(\${$variableName}['min'])) {
-                \$this->addUsingAlias($qualifiedName, \${$variableName}['min'], Criteria::GREATER_EQUAL);
+                \$this->addUsingOperator(\$resolvedColumn, \${$variableName}['min'], Criteria::GREATER_EQUAL);
                 \$useMinMax = true;
             }
             if (isset(\${$variableName}['max'])) {
-                \$this->addUsingAlias($qualifiedName, \${$variableName}['max'], Criteria::LESS_EQUAL);
+                \$this->addUsingOperator(\$resolvedColumn, \${$variableName}['max'], Criteria::LESS_EQUAL);
                 \$useMinMax = true;
             }
             if (\$useMinMax) {
                 return \$this;
             }
-            if (null === \$comparison) {
+            if (\$comparison === null) {
                 \$comparison = Criteria::IN;
             }
         }";
@@ -1115,55 +1122,35 @@ class QueryBuilder extends AbstractOMBuilder
         }";
         } elseif ($col->getType() == PropelTypes::PHP_ARRAY) {
             $script .= "
-        \$key = \$this->getAliasedColName($qualifiedName);
-        if (null === \$comparison || \$comparison == Criteria::CONTAINS_ALL) {
+        if ( \$comparison === null 
+            || \$comparison === Criteria::CONTAINS_ALL 
+            || \$comparison === Criteria::CONTAINS_SOME 
+            || \$comparison === Criteria::CONTAINS_NONE
+        ) {
+            \$andOr = (\$comparison === Criteria::CONTAINS_SOME) ? Criteria::LOGICAL_OR : Criteria::LOGICAL_AND;
+            \$operator = (\$comparison === Criteria::CONTAINS_NONE) ? Criteria::NOT_LIKE : Criteria::LIKE;
             foreach (\$$variableName as \$value) {
-                \$value = '%| ' . \$value . ' |%';
-                if (\$this->containsKey(\$key)) {
-                    \$this->addAnd(\$key, \$value, Criteria::LIKE);
-                } else {
-                    \$this->add(\$key, \$value, Criteria::LIKE);
-                }
+                \$this->addFilter(\$andOr, \$resolvedColumn, \"%| \$value |%\", \$operator);
             }
-
-            return \$this;
-        } elseif (\$comparison == Criteria::CONTAINS_SOME) {
-            foreach (\$$variableName as \$value) {
-                \$value = '%| ' . \$value . ' |%';
-                if (\$this->containsKey(\$key)) {
-                    \$this->addOr(\$key, \$value, Criteria::LIKE);
-                } else {
-                    \$this->add(\$key, \$value, Criteria::LIKE);
-                }
+            if (\$comparison == Criteria::CONTAINS_NONE) {
+                \$this->addOr(\$resolvedColumn, null, Criteria::ISNULL);
             }
-
-            return \$this;
-        } elseif (\$comparison == Criteria::CONTAINS_NONE) {
-            foreach (\$$variableName as \$value) {
-                \$value = '%| ' . \$value . ' |%';
-                if (\$this->containsKey(\$key)) {
-                    \$this->addAnd(\$key, \$value, Criteria::NOT_LIKE);
-                } else {
-                    \$this->add(\$key, \$value, Criteria::NOT_LIKE);
-                }
-            }
-            \$this->addOr(\$key, null, Criteria::ISNULL);
 
             return \$this;
         }";
-        } elseif ($col->isSetType()) {
+        } elseif ($col->isSetType()) { // TODO
             $this->declareClasses(
                 'Propel\Common\Util\SetColumnConverter',
                 'Propel\Common\Exception\SetColumnConverterException',
             );
             $script .= "
-        \$valueSet = " . $this->getTableMapClassName() . '::getValueSet(' . $this->getColumnConstant($col) . ");
+        \$valueSet = $tableMapClassName::getValueSet(" . $this->getColumnConstant($col) . ");
         try {
             \${$variableName} = SetColumnConverter::convertToInt(\${$variableName}, \$valueSet);
         } catch (SetColumnConverterException \$e) {
             throw new PropelException(sprintf('Value \"%s\" is not accepted in this set column', \$e->getValue()), \$e->getCode(), \$e);
         }
-        if (null === \$comparison || \$comparison == Criteria::CONTAINS_ALL) {
+        if (\$comparison === null || \$comparison == Criteria::CONTAINS_ALL) {
             if (\${$variableName} === '0') {
                 return \$this;
             }
@@ -1174,11 +1161,11 @@ class QueryBuilder extends AbstractOMBuilder
             }
             \$comparison = Criteria::BINARY_AND;
         } elseif (\$comparison == Criteria::CONTAINS_NONE) {
-            \$key = \$this->getAliasedColName($qualifiedName);
+            \$resolvedColumn = \$this->resolveLocalColumnByName('$colName');
             if (\${$variableName} !== '0') {
-                \$this->add(\$key, \${$variableName}, Criteria::BINARY_NONE);
+                \$this->add(\$resolvedColumn, \${$variableName}, Criteria::BINARY_NONE);
             }
-            \$this->addOr(\$key, null, Criteria::ISNULL);
+            \$this->addOr(\$resolvedColumn, null, Criteria::ISNULL);
 
             return \$this;
         }";
@@ -1199,16 +1186,14 @@ class QueryBuilder extends AbstractOMBuilder
                 \$convertedValues []= array_search(\$value, \$valueSet);
             }
             \$$variableName = \$convertedValues;
-            if (null === \$comparison) {
+            if (\$comparison === null) {
                 \$comparison = Criteria::IN;
             }
         }";
         } elseif ($col->isTextType()) {
             $script .= "
-        if (null === \$comparison) {
-            if (is_array(\$$variableName)) {
-                \$comparison = Criteria::IN;
-            }
+        if (\$comparison === null && is_array(\$$variableName)) {
+            \$comparison = Criteria::IN;
         }";
         } elseif ($col->isBooleanType()) {
             $script .= "
@@ -1221,8 +1206,7 @@ class QueryBuilder extends AbstractOMBuilder
         \$$variableName = UuidConverter::uuidToBinRecursive(\$$variableName, $uuidSwapFlag);";
         }
         $script .= "
-
-        \$this->addUsingAlias($qualifiedName, \$$variableName, \$comparison);
+        \$this->addUsingOperator(\$resolvedColumn, \$$variableName, \$comparison);
 
         return \$this;
     }
@@ -1242,7 +1226,6 @@ class QueryBuilder extends AbstractOMBuilder
         $singularPhpName = $col->getPhpSingularName();
         $colName = $col->getName();
         $variableName = $col->getCamelCaseName();
-        $qualifiedName = $this->getColumnConstant($col);
         $script .= "
     /**
      * Filter the query on the $colName column
@@ -1253,26 +1236,21 @@ class QueryBuilder extends AbstractOMBuilder
      */
     public function filterBy$singularPhpName(\$$variableName = null, ?string \$comparison = null)
     {
-        if (null === \$comparison || \$comparison == Criteria::CONTAINS_ALL) {
-            if (is_scalar(\$$variableName)) {
-                \$$variableName = '%| ' . \$$variableName . ' |%';
-                \$comparison = Criteria::LIKE;
-            }
-        } elseif (\$comparison == Criteria::CONTAINS_NONE) {
+        \$resolvedColumn = \$this->resolveLocalColumnByName('$colName');
+        if (\$comparison == Criteria::CONTAINS_NONE) {
             \$$variableName = '%| ' . \$$variableName . ' |%';
             \$comparison = Criteria::NOT_LIKE;
-            \$key = \$this->getAliasedColName($qualifiedName);
-            if (\$this->containsKey(\$key)) {
-                \$this->addAnd(\$key, \$$variableName, \$comparison);
-            } else {
-                \$this->addAnd(\$key, \$$variableName, \$comparison);
-            }
-            \$this->addOr(\$key, null, Criteria::ISNULL);
+            \$this->addAnd(\$resolvedColumn, \$$variableName, \$comparison);
+            \$this->addOr(\$resolvedColumn, null, Criteria::ISNULL);
 
             return \$this;
         }
 
-        \$this->addUsingAlias($qualifiedName, \$$variableName, \$comparison);
+        if ((\$comparison === null || \$comparison == Criteria::CONTAINS_ALL) && is_scalar(\$$variableName)) {
+            \$$variableName = '%| ' . \$$variableName . ' |%';
+            \$comparison = Criteria::LIKE;
+        }
+        \$this->addUsingOperator(\$resolvedColumn, \$$variableName, \$comparison);
 
         return \$this;
     }
@@ -1330,6 +1308,7 @@ class QueryBuilder extends AbstractOMBuilder
         $fkPhpName = $this->getClassNameFromBuilder($fkStubObjectBuilder, true);
         $relationName = $this->getFKPhpNameAffix($fk);
         $objectName = '$' . $fkTable->getCamelCaseName();
+        $tableMapClassName = $this->getTableMapClassName();
         $script .= "
     /**
      * Filter the query by a related $fkPhpName object
@@ -1355,29 +1334,27 @@ class QueryBuilder extends AbstractOMBuilder
 
         foreach ($fk->getMapping() as $mapping) {
             [$localColumn, $rightValueOrColumn] = $mapping;
-            if ($rightValueOrColumn instanceof Column) {
+            $columnName = $localColumn->getName();
+            $value = ($rightValueOrColumn instanceof Column)
+                ? "{$objectName}->get" . $rightValueOrColumn->getPhpName() . '()'
+                : var_export($rightValueOrColumn, true);
                 $script .= "
-                ->addUsingAlias(" . $this->getColumnConstant($localColumn) . ', ' . $objectName . '->get' . $rightValueOrColumn->getPhpName() . '(), $comparison)';
-            } else {
-                $value = var_export($rightValueOrColumn, true);
-                $script .= "
-                ->addUsingAlias(" . $this->getColumnConstant($localColumn) . ", $value, \$comparison)";
-            }
+                ->addUsingOperator(\$this->resolveLocalColumnByName('$columnName'), $value, \$comparison)";
         }
 
         $script .= ';';
         if (!$fk->isComposite()) {
-            $localColumnConstant = $this->getColumnConstant($fk->getLocalColumn());
+            $columnName = $fk->getLocalColumn()->getName();
             $foreignColumnName = $fk->getForeignColumn()->getPhpName();
             $keyColumn = $fk->getForeignTable()->hasCompositePrimaryKey() ? $foreignColumnName : 'PrimaryKey';
             $script .= "
         } elseif ($objectName instanceof ObjectCollection) {
-            if (null === \$comparison) {
+            if (\$comparison === null) {
                 \$comparison = Criteria::IN;
             }
 
             \$this
-                ->addUsingAlias($localColumnConstant, {$objectName}->toKeyValue('$keyColumn', '$foreignColumnName'), \$comparison);
+                ->addUsingOperator(\$this->resolveLocalColumnByName('$columnName'), {$objectName}->toKeyValue('$keyColumn', '$foreignColumnName'), \$comparison);
 
             return \$this;";
         }
@@ -1416,6 +1393,7 @@ class QueryBuilder extends AbstractOMBuilder
         $fkPhpName = $this->getClassNameFromBuilder($fkStubObjectBuilder, true);
         $relationName = $this->getRefFKPhpNameAffix($fk);
         $objectName = '$' . $fkTable->getCamelCaseName();
+        $tableMapClassName = $this->getTableMapClassName();
         $script .= "
     /**
      * Filter the query by a related $fkPhpName object
@@ -1435,8 +1413,9 @@ class QueryBuilder extends AbstractOMBuilder
             $rightValue = "{$objectName}->get" . $foreignColumn->getPhpName() . '()';
 
             if ($localValueOrColumn instanceof Column) {
+                $columnName = $localValueOrColumn->getName();
                 $script .= "
-                ->addUsingAlias(" . $this->getColumnConstant($localValueOrColumn) . ", $rightValue, \$comparison)";
+                ->addUsingOperator(\$this->resolveLocalColumnByName('$columnName'), $rightValue, \$comparison)";
             } else {
                 $leftValue = var_export($localValueOrColumn, true);
                 $bindingType = $foreignColumn->getPDOType();
@@ -1541,7 +1520,8 @@ class QueryBuilder extends AbstractOMBuilder
         // create a ModelJoin object for this join
         \$join = new ModelJoin();
         \$join->setJoinType(\$joinType);
-        \$join->setRelationMap(\$relationMap, \$this->useAliasInSQL ? \$this->getModelAlias() : null, \$relationAlias);
+        \$leftAlias = \$this->useAliasInSQL ? \$this->getModelAlias() : null;
+        \$join->setupJoinCondition(\$this, \$relationMap, \$leftAlias, \$relationAlias);
         if (\$previousJoin = \$this->getPreviousJoin()) {
             \$join->setPreviousJoin(\$previousJoin);
         }
@@ -1829,9 +1809,11 @@ class QueryBuilder extends AbstractOMBuilder
             \$this->combine(array(" . $conditionsString . '), Criteria::LOGICAL_OR);';
         } elseif ($table->hasPrimaryKey()) {
             $col = $pks[0];
-            $const = $this->getColumnConstant($col);
+            $columnName = $col->getName();
+            $tableMapClassName = $this->getTableMapClassName();
             $script .= "
-            \$this->addUsingAlias($const, " . $objectName . '->get' . $col->getPhpName() . '(), Criteria::NOT_EQUAL);';
+            \$resolvedColumn = \$this->resolveLocalColumnByName('$columnName');
+            \$this->addUsingOperator(\$resolvedColumn, {$objectName}->get" . $col->getPhpName() . '(), Criteria::NOT_EQUAL);';
         } else {
             $this->declareClass('Propel\\Runtime\\Exception\\LogicException');
             $script .= "

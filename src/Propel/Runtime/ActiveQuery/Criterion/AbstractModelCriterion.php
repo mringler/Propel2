@@ -33,6 +33,7 @@ abstract class AbstractModelCriterion extends AbstractCriterion
      */
     public function __construct(Criteria $outer, string $clause, $column, $value = null, ?string $tableAlias = null)
     {
+        $this->query = $outer;
         $this->value = $value;
         $this->setColumn($column);
         if ($tableAlias) {
@@ -54,48 +55,15 @@ abstract class AbstractModelCriterion extends AbstractCriterion
      * This method checks another Criteria to see if they contain
      * the same attributes and hashtable entries.
      *
-     * @param object|null $obj
+     * @param object|null $filter
      *
      * @return bool
      */
-    public function equals(?object $obj): bool
+    public function equals(?object $filter): bool
     {
-        // TODO: optimize me with early outs
-        if ($this === $obj) {
-            return true;
-        }
-
-        if (!$obj instanceof AbstractModelCriterion) {
-            return false;
-        }
-
-        /** @var \Propel\Runtime\ActiveQuery\Criterion\AbstractModelCriterion $crit */
-        $crit = $obj;
-
-        $isEquiv = (
-            (
-                ($this->table === null && $crit->getTable() === null)
-                || ($this->table !== null && $crit->getTable() === $this->table)
-            )
-            && $this->clause === $crit->getClause()
-            && $this->column === $crit->getColumn()
-            && $this->comparison === $crit->getComparison());
-
-        // check chained criterion
-
-        $clausesLength = count($this->clauses);
-        $isEquiv &= (count($crit->getClauses()) == $clausesLength);
-        $critConjunctions = $crit->getConjunctions();
-        $critClauses = $crit->getClauses();
-        for ($i = 0; $i < $clausesLength && $isEquiv; $i++) {
-            $isEquiv &= ($this->conjunctions[$i] === $critConjunctions[$i]);
-            $isEquiv &= ($this->clauses[$i] === $critClauses[$i]);
-        }
-
-        if ($isEquiv) {
-            $isEquiv &= $this->value === $crit->getValue();
-        }
-
-        return (bool)$isEquiv;
+        return parent::equals($filter)
+            && $filter instanceof static
+            && $this->comparison === $filter->comparison
+            && $this->clause === $filter->clause;
     }
 }

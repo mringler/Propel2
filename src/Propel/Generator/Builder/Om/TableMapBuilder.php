@@ -120,6 +120,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
         $table = $this->getTable();
 
         $this->declareClasses(
+            '\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\LocalColumnExpression',
             '\Propel\Runtime\ActiveQuery\InstancePoolTrait',
             '\Propel\Runtime\Map\TableMap',
             '\Propel\Runtime\Map\TableMapTrait',
@@ -631,44 +632,65 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
     public function buildRelations(): void
     {";
         foreach ($this->getTable()->getForeignKeys() as $fkey) {
-            $joinCondition = var_export($fkey->getNormalizedMap($fkey->getMapping()), true);
-            $onDelete = $fkey->hasOnDelete() ? "'" . $fkey->getOnDelete() . "'" : 'null';
-            $onUpdate = $fkey->hasOnUpdate() ? "'" . $fkey->getOnUpdate() . "'" : 'null';
-            $isPolymorphic = $fkey->isPolymorphic() ? 'true' : 'false';
-            $script .= "
-        \$this->addRelation('" . $this->getFKPhpNameAffix($fkey) . "', '" . addslashes($this->getNewStubObjectBuilder($fkey->getForeignTable())->getFullyQualifiedClassName()) . "', RelationMap::MANY_TO_ONE, $joinCondition, $onDelete, $onUpdate, null, $isPolymorphic);";
+            $relationName = $this->getFKPhpNameAffix($fkey);
+            $script .= $this->buildAddRelationStatement($relationName, $fkey, 'RelationMap::MANY_TO_ONE', false, false, 'null');
         }
 
         foreach ($this->getTable()->getReferrers() as $fkey) {
             $relationName = $this->getRefFKPhpNameAffix($fkey);
-            $joinCondition = var_export($fkey->getNormalizedMap($fkey->getMapping()), true);
-            $onDelete = $fkey->hasOnDelete() ? "'" . $fkey->getOnDelete() . "'" : 'null';
-            $onUpdate = $fkey->hasOnUpdate() ? "'" . $fkey->getOnUpdate() . "'" : 'null';
-            $isPolymorphic = $fkey->isPolymorphic() ? 'true' : 'false';
-            $script .= "
-        \$this->addRelation('$relationName', '" . addslashes($this->getNewStubObjectBuilder($fkey->getTable())->getFullyQualifiedClassName()) . "', RelationMap::ONE_TO_" . ($fkey->isLocalPrimaryKey() ? 'ONE' : 'MANY') . ", $joinCondition, $onDelete, $onUpdate";
-            if ($fkey->isLocalPrimaryKey()) {
-                 $script .= ', null';
-            } else {
-                $script .= ", '" . $this->getRefFKPhpNameAffix($fkey, true) . "'";
-            }
-
-            $script .= ", $isPolymorphic);";
+            $cardinalityConstant = 'RelationMap::ONE_TO_' . ($fkey->isLocalPrimaryKey() ? 'ONE' : 'MANY');
+            $pluralName = $fkey->isLocalPrimaryKey() ? 'null' : "'" . $this->getRefFKPhpNameAffix($fkey, true) . "'";
+            $script .= $this->buildAddRelationStatement($relationName, $fkey, $cardinalityConstant, true, false, $pluralName);
         }
 
         foreach ($this->getTable()->getCrossFks() as $crossFKs) {
             foreach ($crossFKs->getCrossForeignKeys() as $crossFK) {
                 $relationName = $this->getFKPhpNameAffix($crossFK);
                 $pluralName = "'" . $this->getFKPhpNameAffix($crossFK, true) . "'";
-                $onDelete = $crossFK->hasOnDelete() ? "'" . $crossFK->getOnDelete() . "'" : 'null';
-                $onUpdate = $crossFK->hasOnUpdate() ? "'" . $crossFK->getOnUpdate() . "'" : 'null';
-                $script .= "
-        \$this->addRelation('$relationName', '" . addslashes($this->getNewStubObjectBuilder($crossFK->getForeignTable())->getFullyQualifiedClassName()) . "', RelationMap::MANY_TO_MANY, array(), $onDelete, $onUpdate, $pluralName);";
+                $script .= $this->buildAddRelationStatement($relationName, $crossFK, 'RelationMap::MANY_TO_MANY', false, true, $pluralName);
             }
         }
         $script .= "
     }
 ";
+    }
+
+    /**
+     * @param string $relationName
+     * @param \Propel\Generator\Model\ForeignKey $fkey
+     * @param string $cardinalityConstant
+     * @param bool $isBack
+     * @param bool $isCrossFk
+     * @param string $pluralName
+     *
+     * @return string
+     */
+    protected function buildAddRelationStatement(
+        string $relationName,
+        ForeignKey $fkey,
+        string $cardinalityConstant,
+        bool $isBack,
+        bool $isCrossFk,
+        string $pluralName
+    ): string {
+        $table = $isBack ? $fkey->getTable() : $fkey->getForeignTable();
+        $fkTableNameFq = addslashes($this->getNewStubObjectBuilder($table)->getFullyQualifiedClassName());
+        $joinCondition = $isCrossFk ? '[]' : $this->arrayToString($fkey->getNormalizedMap($fkey->getMapping()));
+        $onDelete = $fkey->hasOnDelete() ? "'{$fkey->getOnDelete()}'" : 'null';
+        $onUpdate = $fkey->hasOnUpdate() ? "'{$fkey->getOnUpdate()}'" : 'null';
+        $isPolymorphic = !$isCrossFk && $fkey->isPolymorphic() ? 'true' : 'false';
+
+        return "
+        \$this->addRelation(
+            '$relationName',
+            '$fkTableNameFq',
+            $cardinalityConstant,
+            $joinCondition,
+            $onDelete,
+            $onUpdate,
+            $pluralName,
+            $isPolymorphic
+        );";
     }
 
     /**
@@ -1286,23 +1308,16 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
      */
     public static function addSelectColumns(Criteria \$criteria, ?string \$alias = null): void
     {
-        if (null === \$alias) {";
+        \$tableMap = static::getTableMap();
+        \$tableAlias = \$alias ?: '{$this->getTable()->getName()}';";
         foreach ($this->getTable()->getColumns() as $col) {
-            if (!$col->isLazyLoad()) {
-                $script .= "
-            \$criteria->addSelectColumn({$col->getFQConstantName()});";
-            } // if !col->isLazyLoad
+            if ($col->isLazyLoad()) {
+                continue;
+            }
+            $normalizedColumnName = strtoupper($col->getName());
+            $script .= "
+        \$criteria->addSelectColumn(new LocalColumnExpression(\$criteria, \$tableAlias, \$tableMap->columns['$normalizedColumnName']));";
         }
-        $script .= "
-        } else {";
-        foreach ($this->getTable()->getColumns() as $col) {
-            if (!$col->isLazyLoad()) {
-                $script .= "
-            \$criteria->addSelectColumn(\$alias . '." . $col->getName() . "');";
-            } // if !col->isLazyLoad
-        }
-        $script .= "
-        }";
         $script .= "
     }
 ";

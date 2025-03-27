@@ -10,6 +10,7 @@ namespace Propel\Tests\Runtime\ActiveQuery\SqlBuilder;
 
 use Propel\Runtime\ActiveQuery\Criteria;
 use Propel\Runtime\ActiveQuery\SqlBuilder\SelectQuerySqlBuilder;
+use Propel\Runtime\Exception\PropelException;
 use Propel\Tests\Bookstore\BookQuery;
 use Propel\Tests\TestCaseFixtures;
 
@@ -44,9 +45,35 @@ class SelectQuerySqlBuilderTest extends TestCaseFixtures
             [BookQuery::create(), null, [], 'Empty HAVING clause should build to null'],
             [
                 BookQuery::create()->addHaving('Price', 42, Criteria::GREATER_THAN),
+                'HAVING book.price>:p1',
+                [['table' => 'book', 'column' => 'price', 'value' => 42]],
+               'local column should work in HAVING'
+            ],[
+                BookQuery::create()->setModelAlias('b', true)->addHaving('Price', 42, Criteria::GREATER_THAN),
+                'HAVING b.price>:p1',
+                [['table' => 'book', 'column' => 'price', 'value' => 42]],
+               'table alias should work in HAVING'
+            ],[
+                BookQuery::create()->setModelAlias('b', true)->addAsColumn('Price', 'price * 1.19')->addHaving('Price', 42, Criteria::GREATER_THAN),
                 'HAVING Price>:p1',
                 [['table' => null, 'column' => 'Price', 'value' => 42]],
-               'HAVING clause should build to statement'],
+               'AS column should work in HAVING'
+            ],[
+                BookQuery::create()->addAsColumn('Price', 'price * 1.19')->addHaving('Price > 42'),
+                'HAVING Price > 42',
+                [],
+               'passing a clause should work in HAVING'
+            ],[
+                BookQuery::create()->addAsColumn('Price', 'price * 1.19')->addHaving('Price > ?', 42, \PDO::PARAM_INT),
+                'HAVING Price > :p1',
+                [['table' => null, 'type' => \PDO::PARAM_INT, 'value' => 42]],
+               'Clause with PDO type should work in HAVING'
+            ],[
+                BookQuery::create()->addAsColumn('Price', 'price * 1.19')->addHaving('Price', 42, Criteria::GREATER_THAN, \PDO::PARAM_INT),
+                'HAVING Price>:p1',
+                [['type' => \PDO::PARAM_INT, 'value' => 42]],
+               'Column with PDO type should work in HAVING'
+            ]
         ];
     }
 
@@ -62,17 +89,20 @@ class SelectQuerySqlBuilderTest extends TestCaseFixtures
      */
     public function testBuildHavingClause(Criteria $query, ?string $expectedClause, array $expectedParams, string $message): void
     {
-        $builder = new class ($query) extends SelectQuerySqlBuilder{
-            public function doBuildHavingClause(array &$params): ?string
-            {
-                return $this->buildHavingClause($params);
-            }
-        };
         $params = [];
-        $clause = $builder->doBuildHavingClause($params);
+        $clause = $this->callMethod(new SelectQuerySqlBuilder($query), 'buildHavingClause', [&$params]);
 
         $this->assertSame($expectedClause, $clause, $message);
         $this->assertSame($expectedParams, $params, 'Generated query parameter array does not match');
+    }
+
+    /**
+     * @return void
+     */
+    public function testHavingWithClauseAndPdoTypeThrowsException(): void
+    {
+        $this->expectException(PropelException::class);
+        BookQuery::create()->addHaving('price > 10', 10, Criteria::GREATER_THAN, \PDO::PARAM_INT);
     }
 
     /**

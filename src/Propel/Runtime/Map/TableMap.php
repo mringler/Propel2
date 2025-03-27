@@ -773,6 +773,8 @@ class TableMap
      * @param string|null $pluralName Optional plural name for *_TO_MANY relationships
      * @param bool $polymorphic Optional plural name for *_TO_MANY relationships
      *
+     * @throws \Propel\Runtime\Exception\LogicException
+     *
      * @return \Propel\Runtime\Map\RelationMap the built RelationMap object
      */
     public function addRelation(
@@ -809,8 +811,11 @@ class TableMap
         // set columns
         foreach ($joinConditionMapping as $map) {
             [$local, $foreign] = $map;
+            if ($local[0] !== ':') {
+                throw new LogicException('first postion in join condition mapping has to be column (start with ":")');
+            }
             $relation->addColumnMapping(
-                $this->getColumnOrValue($local, $relation->getLocalTable()),
+                $relation->getLocalTable()->getColumn(substr($local, 1)),
                 $this->getColumnOrValue($foreign, $relation->getForeignTable()),
             );
         }
@@ -823,7 +828,7 @@ class TableMap
      * @param string $value values with starting ':' mean a column name, otherwise a regular value.
      * @param \Propel\Runtime\Map\TableMap $table
      *
-     * @return \Propel\Runtime\Map\ColumnMap|mixed
+     * @return \Propel\Runtime\Map\ColumnMap|string
      */
     protected function getColumnOrValue(string $value, TableMap $table)
     {
@@ -968,7 +973,7 @@ class TableMap
     public function extractPrimaryKey(Criteria $criteria): ?array
     {
         $pkCols = $this->getPrimaryKeys();
-        if (count($pkCols) !== count($criteria->getMap())) {
+        if (count($pkCols) !== count($criteria->getColumnFilter())) {
             return null;
         }
 
@@ -977,9 +982,9 @@ class TableMap
             $fqName = $pkCol->getFullyQualifiedName();
             $name = $pkCol->getName();
 
-            if ($criteria->containsKey($fqName)) {
+            if ($criteria->hasFilterOnColumn($fqName)) {
                 $value = $criteria->getValue($fqName);
-            } elseif ($criteria->containsKey($name)) {
+            } elseif ($criteria->hasFilterOnColumn($name)) {
                 $value = $criteria->getValue($name);
             } else {
                 return null;
@@ -989,5 +994,19 @@ class TableMap
         }
 
         return $pk;
+    }
+
+    /**
+     * Check if an identifier matches any of the names of this TableMap
+     *
+     * @param string $identifier
+     *
+     * @return bool
+     */
+    public function isIdentifiedBy(string $identifier): bool
+    {
+        return $this->tableName === $identifier
+            || $this->phpName === $identifier
+            || $this->classname === ($identifier[0] === '\\' ? $identifier : '\\' . $identifier);
     }
 }

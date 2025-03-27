@@ -10,8 +10,8 @@ namespace Propel\Runtime\ActiveQuery;
 
 use ArrayIterator;
 use IteratorAggregate;
+use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnResolver;
 use Propel\Runtime\ActiveQuery\Exception\UnknownModelException;
-use Propel\Runtime\ActiveQuery\Util\ColumnResolver;
 use Propel\Runtime\Exception\InvalidArgumentException;
 use Propel\Runtime\Exception\LogicException;
 use Propel\Runtime\Formatter\AbstractFormatter;
@@ -68,7 +68,7 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
     protected $defaultFormatterClass = ModelCriteria::FORMAT_OBJECT;
 
     /**
-     * @var \Propel\Runtime\ActiveQuery\Util\ColumnResolver
+     * @var \Propel\Runtime\ActiveQuery\ColumnResolver\ColumnResolver
      */
     protected $columnResolver;
 
@@ -285,6 +285,22 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
     }
 
     /**
+     * Returns the table name associated with an alias.
+     *
+     * @param string $alias
+     *
+     * @return string|null
+     */
+    public function getTableForAlias(string $alias): ?string
+    {
+        if ($this->modelAlias === $alias) {
+            return $this->tableMap->getName();
+        }
+
+        return parent::getTableForAlias($alias);
+    }
+
+    /**
      * Return the short ClassName for class with namespace
      *
      * @param string $fullyQualifiedClassName The fully qualified class name
@@ -338,8 +354,23 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
         if ($this->useAliasInSQL && $this->modelAlias) {
             return $this->modelAlias;
         }
+        if ($this->getTableMap()) {
+            return $this->getTableMap()->getName();
+        }
 
-        return $this->getTableMap()->getName();
+        return parent::getTableNameInQuery();
+    }
+
+    /**
+     * @param string $identifier
+     *
+     * @return bool
+     */
+    public function isIdentifiedBy(string $identifier): bool
+    {
+        return $identifier === $this->getModelAliasOrName()
+            || $identifier === $this->getModelShortName()
+            || ($this->getTableMap() && $identifier === $this->getTableMap()->getName());
     }
 
     /**
@@ -383,5 +414,13 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
         }
 
         return null;
+    }
+
+    /**
+     * @return \Propel\Runtime\ActiveQuery\ColumnResolver\ColumnResolver
+     */
+    public function getColumnResolver(): ColumnResolver
+    {
+        return $this->columnResolver;
     }
 }

@@ -12,7 +12,7 @@
      */
     public function useIn<?= $relationName ?>Query($modelAlias = null, $queryClass = null, $typeOfIn = '<?= $inType ?>')
     {
-        /** @var $q <?= $queryClass ?> */
+        /** @var <?= $queryClass ?> $q */
         $q = $this->useInQuery('<?= $relationName ?>', $modelAlias, $queryClass, $typeOfIn);
         return $q;
     }
@@ -29,7 +29,7 @@
      */
     public function useNotIn<?= $relationName ?>Query($modelAlias = null, $queryClass = null)
     {
-        /** @var $q <?= $queryClass ?> */
+        /** @var <?= $queryClass ?> $q */
         $q = $this->useInQuery('<?= $relationName ?>', $modelAlias, $queryClass, '<?= $notInType ?>');
         return $q;
     }

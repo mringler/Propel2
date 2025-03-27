@@ -169,9 +169,11 @@ class PDODataFetcher extends AbstractDataFetcher
      */
     public function close(): void
     {
-        /** @var \Propel\Runtime\Connection\StatementInterface $dataObject */
+        /** @var \Propel\Runtime\Connection\StatementInterface|null $dataObject */
         $dataObject = $this->getDataObject();
-        $dataObject->closeCursor();
+        if ($dataObject) {
+            $dataObject->closeCursor();
+        }
         $this->setDataObject(null); //so the connection can be garbage collected
         $this->current = null;
         $this->index = -1;

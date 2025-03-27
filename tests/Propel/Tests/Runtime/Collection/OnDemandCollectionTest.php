@@ -27,6 +27,11 @@ use Propel\Tests\Helpers\Bookstore\BookstoreEmptyTestBase;
 class OnDemandCollectionTest extends BookstoreEmptyTestBase
 {
     /**
+     * @var OnDemandCollection|null $books
+     */
+    protected ?OnDemandCollection $books;
+
+    /**
      * @return void
      */
     protected function setUp(): void
@@ -42,6 +47,7 @@ class OnDemandCollectionTest extends BookstoreEmptyTestBase
      */
     protected function tearDown(): void
     {
+        $this->books->getIterator()->closeCursor();
         $this->books = null;
         parent::tearDown();
         Propel::enableInstancePooling();

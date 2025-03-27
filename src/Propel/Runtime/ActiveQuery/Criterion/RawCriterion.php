@@ -39,6 +39,7 @@ class RawCriterion extends AbstractCriterion
             $column = $column->getName();
         }
 
+        $this->query = $outer;
         $this->value = $value;
         $this->column = $column;
         $this->type = $type;

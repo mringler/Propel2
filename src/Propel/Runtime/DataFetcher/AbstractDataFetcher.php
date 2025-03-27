@@ -37,7 +37,7 @@ abstract class AbstractDataFetcher implements DataFetcherInterface
     }
 
     /**
-     * @return mixed
+     * @return mixed|null
      */
     public function getDataObject()
     {

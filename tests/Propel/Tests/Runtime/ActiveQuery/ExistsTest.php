@@ -143,8 +143,7 @@ class ExistsTest extends BookstoreTestBase
         // books of authors who have written more than one books (dummy query)
         $books = BookQuery::create('outerBook')
         ->useAuthorQuery()
-        ->useExistsQuery('Book', 'innerBook')
-        ->where('outerBook.id != innerBook.Id')
+        ->useExistsQuery('Book', 'innerBook')->where('outerBook.id != innerBook.Id')
         ->endUse()
         ->endUse()
         ->find($this->con)
@@ -170,7 +169,7 @@ class ExistsTest extends BookstoreTestBase
         $expectedSql =
         'SELECT book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id, author.id, author.first_name, author.last_name, author.email, author.age '
             . 'FROM book LEFT JOIN author ON (book.author_id=author.id) '
-                . 'WHERE EXISTS (SELECT 1 AS existsFlag FROM book WHERE author.id=book.author_id AND book.title=:p1)';
+                . 'WHERE EXISTS (SELECT 1 AS existsFlag FROM book WHERE book.author_id=author.id AND book.title=:p1)';
                 $params = [];
                 $this->assertEquals($expectedSql, $query->createSelectSql($params));
 

@@ -9,7 +9,7 @@
 namespace Propel\Runtime\ActiveQuery\SqlBuilder;
 
 use Propel\Runtime\ActiveQuery\Criteria;
-use Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion;
+use Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface;
 use Propel\Runtime\Propel;
 
 /**
@@ -109,13 +109,13 @@ abstract class AbstractSqlQueryBuilder
 
         $params = [];
         foreach ($columnNames as $key) {
-            if (!$values->containsKey($key)) {
+            if (!$values->hasFilterOnColumn($key)) {
                 continue;
             }
             $crit = $values->getCriterion($key);
             $params[] = [
-                'column' => $crit->getColumn(),
-                'table' => $crit->getTable(),
+                'column' => $crit->getColumnName(),
+                'table' => $crit->getTableAlias(),
                 'value' => $crit->getValue(),
             ];
         }
@@ -126,16 +126,13 @@ abstract class AbstractSqlQueryBuilder
     /**
      * Build sql statement from a criteria and add it to the given statement collector.
      *
-     * @param \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion $criterion
+     * @param \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface $criterion
      * @param array<mixed>|null $params
      *
      * @return string
      */
-    protected function buildStatementFromCriterion(AbstractCriterion $criterion, ?array &$params): string
+    protected function buildStatementFromCriterion(ColumnFilterInterface $criterion, ?array &$params): string
     {
-        $criterionSql = '';
-        $criterion->appendPsTo($criterionSql, $params);
-
-        return $this->criteria->replaceColumnNames($criterionSql);
+        return $criterion->buildStatement($params);
     }
 }

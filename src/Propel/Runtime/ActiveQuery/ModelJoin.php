@@ -8,6 +8,9 @@
 
 namespace Propel\Runtime\ActiveQuery;
 
+use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\LocalColumnExpression;
+use Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilter;
+use Propel\Runtime\ActiveQuery\FilterExpression\JoinCondition;
 use Propel\Runtime\Exception\LogicException;
 use Propel\Runtime\Map\RelationMap;
 use Propel\Runtime\Map\TableMap;
@@ -37,11 +40,11 @@ class ModelJoin extends Join
     /**
      * @param \Propel\Runtime\Map\RelationMap $relationMap
      * @param string|null $leftTableAlias
-     * @param string|null $relationAlias
+     * @param string|null $rightTableAlias
      *
      * @return $this
      */
-    public function setRelationMap(RelationMap $relationMap, ?string $leftTableAlias = null, ?string $relationAlias = null)
+    public function setRelationMap(RelationMap $relationMap, ?string $leftTableAlias = null, ?string $rightTableAlias = null)
     {
         $leftCols = $relationMap->getLeftColumns();
         $rightCols = $relationMap->getRightColumns();
@@ -55,7 +58,7 @@ class ModelJoin extends Join
                     $this->addForeignValueCondition(
                         $rightCols[$i]->getTableName(),
                         $rightCols[$i]->getName(),
-                        $relationAlias,
+                        $rightTableAlias,
                         $leftValues[$i],
                         Criteria::EQUAL,
                     );
@@ -76,7 +79,7 @@ class ModelJoin extends Join
                     $leftTableAlias,
                     $rightCols[$i]->getTableName(),
                     $rightCols[$i]->getName(),
-                    $relationAlias,
+                    $rightTableAlias,
                     Criteria::EQUAL,
                 );
             }
@@ -84,6 +87,55 @@ class ModelJoin extends Join
         $this->relationMap = $relationMap;
 
         return $this;
+    }
+
+    /**
+     * Inits the join as per default {@see static::setRelationMap()} and generates the join condition.
+     *
+     * Since the condition is built from the relation map, it is slightly more efficient. However, adding
+     * join conditions later requires to run {@see Join::buildJoinCondition()} manually, as the query will
+     * use the existing condition.
+     *
+     * @param \Propel\Runtime\ActiveQuery\Criteria $leftQuery
+     * @param \Propel\Runtime\Map\RelationMap $relationMap
+     * @param string|null $leftTableAlias
+     * @param string|null $rightTableAlias
+     *
+     * @return void
+     */
+    public function setupJoinCondition(Criteria $leftQuery, RelationMap $relationMap, ?string $leftTableAlias = null, ?string $rightTableAlias = null): void
+    {
+        $this->setRelationMap($relationMap, $leftTableAlias, $rightTableAlias);
+        $leftCols = $relationMap->getLeftColumns();
+        $rightCols = $relationMap->getRightColumns();
+        $leftValues = $relationMap->getLocalValues();
+        $nbColumns = $relationMap->countColumnMappings();
+
+        /** @var \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface|null $joinCondition */
+        $joinCondition = null;
+
+        $leftTableAlias = $leftQuery->getTableNameInQuery();
+        for ($i = 0; $i < $nbColumns; $i++) {
+            $rightTableAlias = $rightTableAlias ?: $rightCols[$i]->getTableName();
+            if ($leftValues[$i] !== null) {
+                $column = $relationMap->getType() === RelationMap::ONE_TO_MANY
+                    ? new LocalColumnExpression($leftQuery, $rightTableAlias, $rightCols[$i])
+                    : new LocalColumnExpression($leftQuery, $leftTableAlias, $leftCols[$i]);
+                $filter = new ColumnFilter($leftQuery, $column, self::EQUAL, $leftValues[$i]);
+            } else {
+                $leftColumn = new LocalColumnExpression($leftQuery, $leftTableAlias, $leftCols[$i]);
+                $rightColumn = new LocalColumnExpression($leftQuery, $rightTableAlias, $rightCols[$i]);
+                $filter = new JoinCondition($leftQuery, $leftColumn, self::EQUAL, $rightColumn);
+            }
+
+            if ($joinCondition === null) {
+                $joinCondition = $filter;
+            } else {
+                $joinCondition->addAnd($filter);
+            }
+        }
+
+        $this->joinCondition = $joinCondition;
     }
 
     /**
@@ -252,5 +304,16 @@ class ModelJoin extends Join
             . ' relationMap: ' . $this->relationMap->getName()
             . ' previousJoin: ' . ($this->previousJoin ? '(' . $this->previousJoin . ')' : 'null')
             . ' relationAlias: ' . $this->rightTableAlias;
+    }
+
+    /**
+     * @param string $identifier
+     *
+     * @return bool
+     */
+    public function isIdentifiedBy(string $identifier): bool
+    {
+        return parent::isIdentifiedBy($identifier)
+            || $this->getTableMapOrFail()->isIdentifiedBy($identifier);
     }
 }

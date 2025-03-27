@@ -12,8 +12,9 @@
      */
     public function use<?= $relationName ?>ExistsQuery($modelAlias = null, $queryClass = null, $typeOfExists = '<?= $existsType ?>')
     {
-        /** @var $q <?= $queryClass ?> */
+        /** @var <?= $queryClass ?> $q */
         $q = $this->useExistsQuery('<?= $relationName ?>', $modelAlias, $queryClass, $typeOfExists);
+
         return $q;
     }
 
@@ -29,7 +30,8 @@
      */
     public function use<?= $relationName ?>NotExistsQuery($modelAlias = null, $queryClass = null)
     {
-        /** @var $q <?= $queryClass ?> */
+        /** @var <?= $queryClass ?> $q*/
         $q = $this->useExistsQuery('<?= $relationName ?>', $modelAlias, $queryClass, '<?= $notExistsType ?>');
+
         return $q;
     }

@@ -10,6 +10,7 @@ namespace Propel\Runtime\ActiveQuery\Criterion;
 
 use Exception;
 use Propel\Runtime\ActiveQuery\Criteria;
+use Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface;
 use Propel\Runtime\Adapter\AdapterInterface;
 use Propel\Runtime\Map\ColumnMap;
 use Propel\Runtime\Propel;
@@ -21,17 +22,12 @@ use Propel\Runtime\Propel;
  *
  * @author Hans Lellelid <hans@xmpl.org> (Propel)
  */
-abstract class AbstractCriterion
+abstract class AbstractCriterion extends ClauseList implements ColumnFilterInterface
 {
     /**
-     * @var string
+     * @var \Propel\Runtime\ActiveQuery\Criteria
      */
-    public const UND = ' AND ';
-
-    /**
-     * @var string
-     */
-    public const ODER = ' OR ';
+    protected $query;
 
     /**
      * @var mixed
@@ -46,7 +42,7 @@ abstract class AbstractCriterion
     protected $comparison;
 
     /**
-     * Table name
+     * Table name (as given in statement, could be alias)
      *
      * @var string|null
      */
@@ -75,21 +71,6 @@ abstract class AbstractCriterion
     protected $db;
 
     /**
-     * Other connected criterions
-     *
-     * @var array<int, \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion>
-     */
-    protected $clauses = [];
-
-    /**
-     * Operators for connected criterions
-     * Only self::UND and self::ODER are accepted
-     *
-     * @var array<int, string>
-     */
-    protected $conjunctions = [];
-
-    /**
      * Create a new instance.
      *
      * @param \Propel\Runtime\ActiveQuery\Criteria $outer The outer class (this is an "inner" class).
@@ -99,6 +80,7 @@ abstract class AbstractCriterion
      */
     public function __construct(Criteria $outer, $column, $value, ?string $comparison = null)
     {
+        $this->query = $outer;
         $this->value = $value;
         $this->setColumn($column);
         $this->comparison = ($comparison === null) ? Criteria::EQUAL : $comparison;
@@ -139,7 +121,7 @@ abstract class AbstractCriterion
     {
         if ($column instanceof ColumnMap) {
             $this->column = $column->getName();
-            $this->table = $column->getTable()->getName();
+            $this->table = $column->getTableMap()->getName();
         } else {
             $dotPos = strrpos($column, '.');
             if ($dotPos === false) {
@@ -154,13 +136,36 @@ abstract class AbstractCriterion
     }
 
     /**
+     * @deprecated use aptly named AbstractCriterion::getColumnName()
      * Get the column name.
      *
      * @return string|null A String with the column name.
      */
     public function getColumn(): ?string
     {
+        return $this->getColumnName();
+    }
+
+    /**
+     * Get the column name.
+     *
+     * @return string|null A String with the column name.
+     */
+    public function getColumnName(): ?string
+    {
         return $this->column;
+    }
+
+    /**
+     * @param bool $useQuoteIfEnable
+     *
+     * @return string
+     */
+    public function getLocalColumnName(bool $useQuoteIfEnable = false): string
+    {
+        return $useQuoteIfEnable
+            ? $this->query->quoteColumnIdentifier($this->table, $this->column)
+            : $this->table . '.' . $this->column;
     }
 
     /**
@@ -176,11 +181,21 @@ abstract class AbstractCriterion
     }
 
     /**
-     * Get the table name.
+     * @deprecated use AbstractCriterion::getTableAlias()
      *
      * @return string|null A String with the table name.
      */
     public function getTable(): ?string
+    {
+        return $this->getTableAlias();
+    }
+
+    /**
+     * Get the table name.
+     *
+     * @return string|null A String with the table name.
+     */
+    public function getTableAlias(): ?string
     {
         return $this->table;
     }
@@ -196,6 +211,14 @@ abstract class AbstractCriterion
     }
 
     /**
+     * @return string A String with the comparison.
+     */
+    public function getOperator(): string
+    {
+        return $this->comparison;
+    }
+
+    /**
      * Get the value.
      *
      * @return mixed An Object with the value.
@@ -203,6 +226,14 @@ abstract class AbstractCriterion
     public function getValue()
     {
         return $this->value;
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasValue(): bool
+    {
+        return $this->value !== null;
     }
 
     /**
@@ -223,69 +254,55 @@ abstract class AbstractCriterion
      *
      * The AdapterInterface might be used to get db specific variations of sql.
      *
-     * @param \Propel\Runtime\Adapter\AdapterInterface $v Value to assign to db.
+     * @param \Propel\Runtime\Adapter\AdapterInterface $adapter Value to assign to db.
      *
      * @return void
      */
-    public function setAdapter(AdapterInterface $v): void
+    public function setAdapter(AdapterInterface $adapter): void
     {
-        $this->db = $v;
+        $this->db = $adapter;
         foreach ($this->clauses as $clause) {
-            $clause->setAdapter($v);
+            $clause->setAdapter($adapter);
         }
     }
 
     /**
-     * Get the list of clauses in this Criterion.
+     * @param array $paramCollector
      *
-     * @return array<self>
+     * @return string
      */
-    public function getClauses(): array
+    public function buildStatement(array &$paramCollector): string
     {
-        return $this->clauses;
+        $rawExpression = $this->buildCriterionExpression($paramCollector);
+        $expression = $this->query->replaceColumnNames($rawExpression);
+        if (!$this->clauses) {
+            return $expression;
+        }
+
+        // if there are sub criterions, they must be combined to this criterion
+        $statement = str_repeat('(', count($this->clauses)) . $expression;
+        foreach ($this->clauses as $key => $clause) {
+            $conjunction = $this->conjunctions[$key];
+            $clause = $clause->buildStatement($paramCollector);
+            $statement .= " $conjunction $clause)";
+        }
+
+        return $statement;
     }
 
     /**
-     * Get the list of conjunctions in this Criterion
+     * @param array $paramCollector
      *
-     * @return array
+     * @return void
      */
-    public function getConjunctions(): array
+    public function collectParameters(array &$paramCollector): void
     {
-        return $this->conjunctions;
+        $this->buildStatement($paramCollector);
     }
 
     /**
-     * Append an AND Criterion onto this Criterion's list.
+     * @deprecated use AbstractCriterion::buildStatement
      *
-     * @param \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion $criterion
-     *
-     * @return $this
-     */
-    public function addAnd(AbstractCriterion $criterion)
-    {
-        $this->clauses[] = $criterion;
-        $this->conjunctions[] = self::UND;
-
-        return $this;
-    }
-
-    /**
-     * Append an OR Criterion onto this Criterion's list.
-     *
-     * @param \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion $criterion
-     *
-     * @return $this
-     */
-    public function addOr(AbstractCriterion $criterion)
-    {
-        $this->clauses[] = $criterion;
-        $this->conjunctions[] = self::ODER;
-
-        return $this;
-    }
-
-    /**
      * Appends a Prepared Statement representation of the Criterion
      * onto the buffer.
      *
@@ -298,20 +315,7 @@ abstract class AbstractCriterion
      */
     public function appendPsTo(string &$sb, array &$params): void
     {
-        if (!$this->clauses) {
-            $this->appendPsForUniqueClauseTo($sb, $params);
-
-            return;
-        }
-
-        // if there are sub criterions, they must be combined to this criterion
-        $sb .= str_repeat('(', count($this->clauses));
-        $this->appendPsForUniqueClauseTo($sb, $params);
-        foreach ($this->clauses as $key => $clause) {
-            $sb .= $this->conjunctions[$key];
-            $clause->appendPsTo($sb, $params);
-            $sb .= ')';
-        }
+        $sb .= $this->buildStatement($params);
     }
 
     /**
@@ -319,11 +323,25 @@ abstract class AbstractCriterion
      */
     public function __toString(): string
     {
-        $sb = '';
         $params = [];
-        $this->appendPsTo($sb, $params);
+        $sb = $this->buildStatement($params);
 
         return $sb;
+    }
+
+    /**
+     * Appends a Prepared Statement representation of the Criterion onto the buffer
+     *
+     * @param array $params A list to which Prepared Statement parameters will be appended
+     *
+     * @return string
+     */
+    protected function buildCriterionExpression(array &$params): string
+    {
+        $expression = '';
+        $this->appendPsForUniqueClauseTo($expression, $params);
+
+        return $expression;
     }
 
     /**
@@ -340,104 +358,62 @@ abstract class AbstractCriterion
      * This method checks another Criteria to see if they contain
      * the same attributes and hashtable entries.
      *
-     * @param object|null $obj
+     * @param object|null $filter
      *
      * @return bool
      */
-    public function equals(?object $obj): bool
+    public function equals(?object $filter): bool
     {
-        // TODO: optimize me with early outs
-        if ($this === $obj) {
+        if ($this === $filter) {
             return true;
         }
 
-        if (!$obj instanceof AbstractCriterion) {
+        if (!$filter instanceof static) {
             return false;
         }
 
-        /** @var \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion $crit */
-        $crit = $obj;
-
-        $isEquiv = (
-            (($this->table === null && $crit->getTable() === null)
-            || ($this->table !== null && $this->table === $crit->getTable()))
-            && $this->column === $crit->getColumn()
-            && $this->comparison === $crit->getComparison()
-        );
-
-        // check chained criterion
-
-        $clausesLength = count($this->clauses);
-        $isEquiv &= (count($crit->getClauses()) == $clausesLength);
-        $critConjunctions = $crit->getConjunctions();
-        $critClauses = $crit->getClauses();
-        for ($i = 0; $i < $clausesLength && $isEquiv; $i++) {
-            $isEquiv &= ($this->conjunctions[$i] === $critConjunctions[$i]);
-            $isEquiv &= ($this->clauses[$i] === $critClauses[$i]);
+        if (
+            $this->table !== $filter->getTableAlias()
+            && $this->column !== $filter->getColumnName()
+            && $this->comparison !== $filter->getComparison()
+        ) {
+            return false;
         }
 
-        if ($isEquiv) {
-            $isEquiv &= $this->value === $crit->getValue();
-        }
-
-        return (bool)$isEquiv;
+        return parent::equals($filter);
     }
 
     /**
-     * Get all tables from nested criterion objects
+     * @deprecated use getAttachedFilter()
      *
-     * @return array
+     * @return array<\Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion|\Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface>
      */
-    public function getAllTables(): array
+    public function getAttachedCriterion(): array
     {
-        $tables = [];
-        $this->addCriterionTable($this, $tables);
-
-        return $tables;
-    }
-
-    /**
-     * method supporting recursion through all criterions to give
-     * us a string array of tables from each criterion
-     *
-     * @param \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion $c
-     * @param array $s
-     *
-     * @return void
-     */
-    private function addCriterionTable(AbstractCriterion $c, array &$s): void
-    {
-        $s[] = $c->getTable();
-        foreach ($c->getClauses() as $clause) {
-            $this->addCriterionTable($clause, $s);
-        }
+        return $this->getAttachedFilter();
     }
 
     /**
      * get an array of all criterion attached to this
      * recursing through all sub criterion
      *
-     * @return array<\Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion>
+     * @return array<\Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface>
      */
-    public function getAttachedCriterion(): array
+    public function getAttachedFilter(): array
     {
-        $criterions = [$this];
-        foreach ($this->getClauses() as $criterion) {
-            $criterions = array_merge($criterions, $criterion->getAttachedCriterion());
-        }
+        $criterions = parent::getAttachedFilter();
+        array_unshift($criterions, $this);
 
         return $criterions;
     }
 
     /**
-     * Ensures deep cloning of attached objects
+     * Check if this or any of the attached filters is a Criterion
      *
-     * @return void
+     * @return bool
      */
-    public function __clone()
+    public function containsCriterion(): bool
     {
-        foreach ($this->clauses as $key => $criterion) {
-            $this->clauses[$key] = clone $criterion;
-        }
+        return true;
     }
 }

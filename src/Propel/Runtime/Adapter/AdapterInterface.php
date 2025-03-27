@@ -141,6 +141,14 @@ interface AdapterInterface
     public function quote(string $text): string;
 
     /**
+     * @param string|null $tableAlias
+     * @param string $columnName
+     *
+     * @return string
+     */
+    public function quoteColumnIdentifier(?string $tableAlias, string $columnName): string;
+
+    /**
      * Whether this adapter uses an ID generation system that requires getting ID _before_ performing INSERT.
      *
      * @return bool

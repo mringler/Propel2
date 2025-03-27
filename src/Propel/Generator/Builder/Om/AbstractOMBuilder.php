@@ -13,7 +13,6 @@ use Propel\Generator\Builder\DataModelBuilder;
 use Propel\Generator\Builder\Util\PropelTemplate;
 use Propel\Generator\Exception\InvalidArgumentException;
 use Propel\Generator\Exception\LogicException;
-use Propel\Generator\Exception\RuntimeException;
 use Propel\Generator\Model\Column;
 use Propel\Generator\Model\CrossForeignKeys;
 use Propel\Generator\Model\ForeignKey;
@@ -909,8 +908,6 @@ abstract class AbstractOMBuilder extends DataModelBuilder
      *
      * @param \Propel\Generator\Model\ForeignKey $fk
      *
-     * @throws \Propel\Generator\Exception\RuntimeException
-     *
      * @return string
      */
     protected static function getRelatedBySuffix(ForeignKey $fk): string
@@ -920,9 +917,6 @@ abstract class AbstractOMBuilder extends DataModelBuilder
         foreach ($fk->getMapping() as $mapping) {
             [$localColumn, $foreignValueOrColumn] = $mapping;
             $localTable = $fk->getTable();
-            if (!$localColumn) {
-                throw new RuntimeException(sprintf('Could not resolve column of foreign key `%s` on table `%s`', $fk->getName(), $localTable->getName()));
-            }
 
             $tableName = $fk->getTableName();
             $foreignTableName = (string)$fk->getForeignTableName();
@@ -972,8 +966,6 @@ abstract class AbstractOMBuilder extends DataModelBuilder
     /**
      * @param \Propel\Generator\Model\ForeignKey $fk
      *
-     * @throws \Propel\Generator\Exception\RuntimeException
-     *
      * @return string
      */
     protected static function getRefRelatedBySuffix(ForeignKey $fk): string
@@ -982,9 +974,6 @@ abstract class AbstractOMBuilder extends DataModelBuilder
         foreach ($fk->getMapping() as $mapping) {
             [$localColumn, $foreignValueOrColumn] = $mapping;
             $localTable = $fk->getTable();
-            if (!$localColumn) {
-                throw new RuntimeException(sprintf('Could not resolve column of foreign key `%s` on table `%s`', $fk->getName(), $localTable->getName()));
-            }
 
             $tableName = $fk->getTableName();
             $foreignTableName = (string)$fk->getForeignTableName();

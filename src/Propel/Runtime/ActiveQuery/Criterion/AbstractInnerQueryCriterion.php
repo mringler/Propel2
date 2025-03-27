@@ -9,6 +9,7 @@
 namespace Propel\Runtime\ActiveQuery\Criterion;
 
 use Propel\Runtime\ActiveQuery\Criteria;
+use Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface;
 use Propel\Runtime\ActiveQuery\ModelCriteria;
 use Propel\Runtime\ActiveQuery\ModelJoin;
 use Propel\Runtime\Exception\PropelException;
@@ -125,9 +126,9 @@ abstract class AbstractInnerQueryCriterion extends AbstractCriterion
      *
      * @throws \Propel\Runtime\Exception\PropelException
      *
-     * @return \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion
+     * @return \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface
      */
-    protected function buildJoinCondition($outerQuery, RelationMap $relationMap): AbstractCriterion
+    protected function buildJoinCondition($outerQuery, RelationMap $relationMap): ColumnFilterInterface
     {
         if (!$this->innerQuery instanceof ModelCriteria) {
             throw new PropelException('Cannot build join on regular condition');
@@ -138,8 +139,8 @@ abstract class AbstractInnerQueryCriterion extends AbstractCriterion
         $join->setRelationMap($relationMap, $outerAlias, $innerAlias);
         $join->buildJoinCondition($outerQuery);
 
+        /** @var \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface $joinCondition */
         $joinCondition = $join->getJoinCondition();
-        $joinCondition->setTable($this->innerQuery->getTableNameInQuery());
 
         return $joinCondition;
     }

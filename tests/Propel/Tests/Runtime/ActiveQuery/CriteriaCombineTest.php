@@ -148,13 +148,6 @@ class CriteriaCombineTest extends BaseTestCase
         $this->assertEquals($crit3, $crita[1]);
         $this->assertEquals($crit4, $crita[2]);
         $this->assertEquals($crit5, $crita[3]);
-
-        $tables = $crit2->getAllTables();
-
-        $this->assertEquals($crit2->getTable(), $tables[0]);
-        $this->assertEquals($crit3->getTable(), $tables[1]);
-        $this->assertEquals($crit4->getTable(), $tables[2]);
-        $this->assertEquals($crit5->getTable(), $tables[3]);
     }
 
     /**

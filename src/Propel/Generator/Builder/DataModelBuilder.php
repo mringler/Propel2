@@ -581,4 +581,23 @@ abstract class DataModelBuilder
     {
         return $this->getBuildProperty('generator.objectModel.classPrefix') . $identifier;
     }
+
+    /**
+     * Turn array into string representation.
+     *
+     * Compared to var_export, this uses brackets and no newlines.
+     *
+     * arrayToString([['a', 42], ['b']]) => '[['a', 42], ['b']]'
+     *
+     * @param array<array|mixed> $arr
+     *
+     * @return string
+     */
+    protected function arrayToString(array $arr): string
+    {
+        $cb = fn ($item) => is_array($item) ? $this->arrayToString($item) : var_export($item, true);
+        $result = array_map($cb, $arr);
+
+        return '[' . implode(', ', $result) . ']';
+    }
 }

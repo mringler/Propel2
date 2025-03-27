@@ -298,9 +298,10 @@ class " . $this->getUnqualifiedClassName() . ' extends ' . $baseClassName . "
     protected function getClassKeyCondition(): string
     {
         $child = $this->getChild();
+        $value = "{$this->getTableMapClassName()}::CLASSKEY_{$child->getConstantSuffix()}";
         $col = $child->getColumn();
 
-        return '$this->addUsingAlias(' . $col->getFQConstantName() . ', ' . $this->getTableMapClassName() . '::CLASSKEY_' . $child->getConstantSuffix() . ');';
+        return "\$this->addUsingOperator(\$this->resolveLocalColumnByName('{$col->getName()}'), $value);";
     }
 
     /**

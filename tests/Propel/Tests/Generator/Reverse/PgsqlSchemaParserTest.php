@@ -99,6 +99,7 @@ class PgsqlSchemaParserTest extends TestCaseFixturesDatabase
         if($expectedDefaultType === null){
             $this->assertNull($expectedDefaultType);
         } else {
+            $this->assertNotNull($defaultValue);
             $this->assertEquals($expectedDefaultType, $defaultValue->getType());
             $this->assertEquals($expectedDefaultValue, $defaultValue->getValue());
         }

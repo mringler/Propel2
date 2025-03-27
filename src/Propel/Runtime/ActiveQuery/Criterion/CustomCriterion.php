@@ -23,6 +23,7 @@ class CustomCriterion extends AbstractCriterion
      */
     public function __construct(Criteria $outer, string $value)
     {
+        $this->query = $outer;
         $this->value = $value;
         $this->init($outer);
     }

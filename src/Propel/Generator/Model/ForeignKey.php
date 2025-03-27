@@ -8,6 +8,7 @@
 
 namespace Propel\Generator\Model;
 
+use LogicException;
 use Propel\Generator\Platform\PlatformInterface;
 use Propel\Runtime\Exception\RuntimeException;
 
@@ -698,38 +699,34 @@ class ForeignKey extends MappingModel
     }
 
     /**
-     * @return array [[Column $leftColumn, $rightValueOrColumn], ..., ...]
+     * @throws \LogicException
+     *
+     * @return array<array{0: \Propel\Generator\Model\Column, 1: \Propel\Generator\Model\Column|string}> [[Column $leftColumn, $rightValueOrColumn], ..., ...]
      */
     public function getMapping(): array
     {
         $mapping = [];
-        $size = count($this->localColumns);
-        for ($i = 0; $i < $size; $i++) {
-            $right = $this->foreignColumns[$i];
-            if ($right) {
-                $right = $this->getForeignTable()->getColumn($right);
-            } else {
-                $right = $this->localValues[$i];
+        foreach ($this->localColumns as $i => $localColumnName) {
+            $right = $this->foreignColumns[$i]
+                ? $this->getForeignTable()->getColumn($this->foreignColumns[$i])
+                : $this->localValues[$i];
+            $leftColumn = $this->parentTable->getColumn($localColumnName);
+            if ($right === null || $leftColumn === null) {
+                throw new LogicException('ForeignKey mapping cannot contain null values.');
             }
-            $mapping[] = [$this->parentTable->getColumn($this->localColumns[$i]), $right];
+            $mapping[] = [$leftColumn, $right];
         }
 
         return $mapping;
     }
 
     /**
-     * @return array [[$leftValueOrColumn, Column $rightColumn], ..., ...]
+     * @return array<array{0: \Propel\Generator\Model\Column|string, 1: \Propel\Generator\Model\Column}> [[$leftValueOrColumn, Column $rightColumn], ..., ...]
      */
     public function getInverseMapping(): array
     {
-        $mapping = $this->getMapping();
-        foreach ($mapping as &$map) {
-            $left = $map[0];
-            $map[0] = $map[1];
-            $map[1] = $left;
-        }
-
-        return $mapping;
+        /** @var array<array{0: string|\Propel\Generator\Model\Column, 1: \Propel\Generator\Model\Column}> */
+        return array_map('array_reverse', $this->getMapping());
     }
 
     /**
@@ -946,20 +943,16 @@ class ForeignKey extends MappingModel
     }
 
     /**
-     * @param array $mapping
+     * @param array<array{0: \Propel\Generator\Model\Column|string, 1: string|\Propel\Generator\Model\Column|string}> $mapping
      *
-     * @return array [[$localColumnName, $right, $compare], ...]
+     * @return array<array{0: string, 1: string}> [[$localColumnName, $right, $compare], ...]
      */
     public function getNormalizedMap(array $mapping): array
     {
         $result = [];
 
         foreach ($mapping as $map) {
-            [$left, $right] = $map;
-            $item = [];
-            $item[0] = $left instanceof Column ? ':' . $left->getName() : $left;
-            $item[1] = $right instanceof Column ? ':' . $right->getName() : $right;
-            $result[] = $item;
+            $result[] = array_map(fn ($col) => $col instanceof Column ? ':' . $col->getName() : $col, $map);
         }
 
         return $result;

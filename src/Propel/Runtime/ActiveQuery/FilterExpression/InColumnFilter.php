@@ -1,0 +1,39 @@
+<?php
+
+/**
+ * MIT License. This file is part of the Propel package.
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+namespace Propel\Runtime\ActiveQuery\FilterExpression;
+
+use Propel\Runtime\ActiveQuery\Criteria;
+use Traversable;
+
+class InColumnFilter extends AbstractColumnFilter
+{
+    /**
+     * @param array<array> $paramCollector A list to which Prepared Statement parameters will be appended
+     *
+     * @return string
+     */
+    protected function buildFilterClause(array &$paramCollector): string
+    {
+        $values = ($this->value instanceof Traversable) ? iterator_to_array($this->value) : (array)$this->value;
+
+        if (!$values) {
+            return ($this->operator === Criteria::IN) ? '1<>1' : '1=1';
+        }
+
+        $bindParams = [];
+        foreach ($values as $value) {
+            $param = $this->buildParameterWithValue($value);
+            $bindParams[] = $this->addParameter($paramCollector, $param);
+        }
+        $field = $this->getLocalColumnName();
+        $paramList = implode(',', $bindParams);
+
+        return "$field{$this->operator}($paramList)";
+    }
+}

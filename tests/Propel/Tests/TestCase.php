@@ -195,4 +195,15 @@ class TestCase extends PHPUnitTestCase
     {
         $this->getProperty($obj, $name)->setValue($obj, $value);
     }
+
+    /**
+     * @return void
+     */
+    public static function setUpBeforeClass(): void
+    {
+        // restore instance pool default
+        \Propel\Runtime\Propel::enableInstancePooling();
+        
+        parent::setUpBeforeClass();
+    }
 }

@@ -9,7 +9,7 @@
 namespace Propel\Runtime\ActiveQuery\SqlBuilder;
 
 use Propel\Runtime\ActiveQuery\Criteria;
-use Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion;
+use Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface;
 
 /**
  * This class produces the base object class (e.g. BaseMyTable) which contains
@@ -97,9 +97,7 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
      */
     protected function buildSelectClause(array &$sourceTableNamesCollector): string
     {
-        $selectSql = $this->adapter->createSelectSqlPart($this->criteria, $sourceTableNamesCollector);
-
-        return $this->criteria->replaceColumnNames($selectSql);
+        return $this->adapter->createSelectSqlPart($this->criteria, $sourceTableNamesCollector);
     }
 
     /**
@@ -111,8 +109,7 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
      */
     protected function buildFromClause(?array &$params, array $sourceTableNames, array $joinClause): string
     {
-        $sourceTableNames = array_filter($sourceTableNames);
-        $sourceTableNames = array_unique($sourceTableNames);
+        $sourceTableNames = array_unique(array_filter($sourceTableNames));
 
         $joinTableNames = $this->getJoinTableNames();
         if ($joinTableNames) {
@@ -129,6 +126,10 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
 
         if (!$sourceTableNames && $this->criteria->getPrimaryTableName()) {
             $primaryTable = $this->criteria->getPrimaryTableName();
+            $possibleAlias = $this->criteria->getTableNameInQuery();
+            if ($primaryTable !== $possibleAlias) {
+                $primaryTable = "$primaryTable $possibleAlias";
+            }
             $sourceTableNames[] = $this->quoteIdentifierTable($primaryTable);
         }
 
@@ -187,8 +188,9 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
                 $sourceTableNamesCollector[] = $join->getLeftTableWithAlias();
             }
             $join->setAdapter($this->adapter);
+            $isBuiltFromFilter = ($join->getJoinCondition() && !$join->getJoinCondition()->containsCriterion());
             $joinClauseString = $join->getClause($params);
-            $joinClause[] = $this->criteria->replaceColumnNames($joinClauseString);
+            $joinClause[] = $isBuiltFromFilter ? $joinClauseString : $this->criteria->replaceColumnNames($joinClauseString);
         }
 
         return $joinClause;
@@ -219,7 +221,7 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
      */
     protected function buildWhereClause(?array &$params, array &$sourceTableNamesCollector): ?string
     {
-        $columnNameToCriterions = $this->criteria->getMap();
+        $columnNameToCriterions = $this->criteria->getColumnFilter();
         if (!$columnNameToCriterions) {
             return null;
         }
@@ -227,8 +229,8 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
         $whereClause = [];
 
         foreach ($columnNameToCriterions as $criterion) {
-            foreach ($criterion->getAttachedCriterion() as $attachedCriterion) {
-                $rawTableName = $attachedCriterion->getTable();
+            foreach ($criterion->getAttachedFilter() as $attachedCriterion) {
+                $rawTableName = $attachedCriterion->getTableAlias();
                 if (!$rawTableName) {
                     continue;
                 }
@@ -246,12 +248,12 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
     /**
      * Set the criterion to be case insensitive if requested.
      *
-     * @param \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion $criterion
+     * @param \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface $criterion
      * @param string $realTableName
      *
      * @return void
      */
-    protected function setCriterionsIgnoreCase(AbstractCriterion $criterion, string $realTableName): void
+    protected function setCriterionsIgnoreCase(ColumnFilterInterface $criterion, string $realTableName): void
     {
         if (!$this->criteria->isIgnoreCase()) {
             return;
@@ -261,7 +263,7 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
             return;
         }
 
-        $column = $criterion->getColumn();
+        $column = $criterion->getColumnName();
         $isTextColumn = $this->dbMap->getTable($realTableName)->getColumn($column)->isText();
         if (!$isTextColumn) {
             return;

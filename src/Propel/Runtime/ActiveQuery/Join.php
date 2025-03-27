@@ -8,8 +8,8 @@
 
 namespace Propel\Runtime\ActiveQuery;
 
-use Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion;
-use Propel\Runtime\ActiveQuery\Criterion\CriterionFactory;
+use Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface;
+use Propel\Runtime\ActiveQuery\FilterExpression\FilterFactory;
 use Propel\Runtime\ActiveQuery\Join as ActiveQueryJoin;
 use Propel\Runtime\Adapter\AdapterInterface;
 use Propel\Runtime\Exception\LogicException;
@@ -114,7 +114,7 @@ class Join
     protected $rightTableAlias;
 
     /**
-     * @var \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion|null
+     * @var \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface|null
      */
     protected $joinCondition;
 
@@ -695,11 +695,11 @@ class Join
     /**
      * Set a custom join condition
      *
-     * @param \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion $joinCondition a Join condition
+     * @param \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface $joinCondition a Join condition
      *
      * @return void
      */
-    public function setJoinCondition(AbstractCriterion $joinCondition): void
+    public function setJoinCondition(ColumnFilterInterface $joinCondition): void
     {
         $this->joinCondition = $joinCondition;
     }
@@ -707,9 +707,9 @@ class Join
     /**
      * Get the custom join condition, if previously set
      *
-     * @return \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion|null
+     * @return \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface|null
      */
-    public function getJoinCondition(): ?AbstractCriterion
+    public function getJoinCondition(): ?ColumnFilterInterface
     {
         return $this->joinCondition;
     }
@@ -719,9 +719,9 @@ class Join
      *
      * @throws \Propel\Runtime\Exception\LogicException
      *
-     * @return \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion
+     * @return \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface
      */
-    public function getJoinConditionOrFail(): AbstractCriterion
+    public function getJoinConditionOrFail(): ColumnFilterInterface
     {
         $joinCondition = $this->getJoinCondition();
 
@@ -741,25 +741,25 @@ class Join
      */
     public function buildJoinCondition(Criteria $c): void
     {
-        /** @var \Propel\Runtime\ActiveQuery\Criterion\AbstractCriterion|null $joinCondition */
+        /** @var \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface|null $joinCondition */
         $joinCondition = null;
         for ($i = 0; $i < $this->count; $i++) {
             if ($this->leftValues[$i]) {
-                $criterion = CriterionFactory::build(
+                $criterion = FilterFactory::build(
                     $c,
                     $this->getLeftColumn($i),
                     self::EQUAL,
                     $this->leftValues[$i],
                 );
             } elseif ($this->rightValues[$i]) {
-                $criterion = CriterionFactory::build(
+                $criterion = FilterFactory::build(
                     $c,
                     $this->getRightColumn($i),
                     self::EQUAL,
                     $this->rightValues[$i],
                 );
             } else {
-                $criterion = CriterionFactory::build(
+                $criterion = FilterFactory::build(
                     $c,
                     $this->getLeftColumn($i),
                     Criteria::CUSTOM,
@@ -808,8 +808,11 @@ class Join
             }
             $joinCondition = sprintf('(%s)', implode(' AND ', $conditions));
         } else {
-            $joinCondition = '';
-            $this->getJoinCondition()->appendPsTo($joinCondition, $params);
+            $filter = $this->getJoinCondition();
+            $joinCondition = $filter->buildStatement($params);
+            if ($filter->count() === 1) { // for BC with tests
+                $joinCondition = "($joinCondition)";
+            }
         }
 
         $rightTableName = $this->getRightTableWithAlias();
@@ -877,5 +880,15 @@ class Join
     public function setIdentifierQuoting(bool $identifierQuoting): void
     {
         $this->identifierQuoting = $identifierQuoting;
+    }
+
+    /**
+     * @param string $identifier
+     *
+     * @return bool
+     */
+    public function isIdentifiedBy(string $identifier): bool
+    {
+        return $this->rightTableAlias === $identifier || $this->rightTableName === $identifier;
     }
 }

@@ -92,7 +92,7 @@ class RelationMap
     /**
      * Values used for polymorphic associations.
      *
-     * @var array
+     * @var array<string|null>
      */
     protected $localValues = [];
 
@@ -261,7 +261,7 @@ class RelationMap
      * Add a column mapping
      *
      * @param \Propel\Runtime\Map\ColumnMap $local The local column
-     * @param \Propel\Runtime\Map\ColumnMap|mixed $foreign The foreign column or value
+     * @param \Propel\Runtime\Map\ColumnMap|string $foreign The foreign column or value
      *
      * @return void
      */
@@ -371,7 +371,7 @@ class RelationMap
     }
 
     /**
-     * @return array
+     * @return array<string|null>
      */
     public function getLocalValues(): array
     {

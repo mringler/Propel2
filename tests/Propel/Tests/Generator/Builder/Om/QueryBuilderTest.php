@@ -516,7 +516,7 @@ class QueryBuilderTest extends BookstoreTestBase
             $cton0->addAnd($cton1);
             $q1->addOr($cton0);
         }
-        $this->assertEquals($q1, $q, 'filterByPrimaryKeys() translates to a series of Criteria::EQUAL in the PK columns');
+        $this->assertObjectEquals($q1, $q, 'equals', 'filterByPrimaryKeys() translates to a series of Criteria::EQUAL in the PK columns');
 
         $q = new BookListRelQuery();
         $q->filterByPrimaryKeys([]);

@@ -122,6 +122,9 @@ class AggregateColumnBehavior extends Behavior
 
         foreach ($this->getForeignKey()->getMapping() as $index => $mapping) {
             [$localColumn, $foreignColumn] = $mapping;
+            if (is_string($foreignColumn)) {
+                throw new InvalidArgumentException('AggregateColumnBehavior does not work with polymorphic relations.');
+            }
             $conditions[] = $localColumn->getFullyQualifiedName() . ' = :p' . ($index + 1);
             $bindings[$index + 1] = $foreignColumn->getPhpName();
         }

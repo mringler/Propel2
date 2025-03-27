@@ -136,11 +136,23 @@ class ColumnMap
     }
 
     /**
+     * @deprecated use aptly named getTableMap().
+     *
      * Get the table map this column belongs to.
      *
      * @return \Propel\Runtime\Map\TableMap
      */
     public function getTable(): TableMap
+    {
+        return $this->getTableMap();
+    }
+
+    /**
+     * Get the table map this column belongs to.
+     *
+     * @return \Propel\Runtime\Map\TableMap
+     */
+    public function getTableMap(): TableMap
     {
         return $this->table;
     }
@@ -433,7 +445,7 @@ class ColumnMap
             return null;
         }
 
-        foreach ($this->getTable()->getRelations() as $relation) {
+        foreach ($this->getTableMap()->getRelations() as $relation) {
             if ($relation->getType() === RelationMap::MANY_TO_ONE) {
                 if (
                     $relation->getForeignTable()->getName() === $this->getRelatedTableName()

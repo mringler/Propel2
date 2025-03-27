@@ -311,6 +311,7 @@ abstract class " . $this->getUnqualifiedClassName() . $parentClass . ' implement
             '\Propel\Runtime\Collection\ObjectCombinationCollection',
             '\Propel\Runtime\Exception\BadMethodCallException',
             '\Propel\Runtime\Exception\PropelException',
+            '\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\LocalColumnExpression',
             '\Propel\Runtime\ActiveQuery\Criteria',
             '\Propel\Runtime\ActiveQuery\ModelCriteria',
             '\Propel\Runtime\ActiveRecord\ActiveRecordInterface',
@@ -2883,6 +2884,7 @@ abstract class " . $this->getUnqualifiedClassName() . $parentClass . ' implement
         }
 
         $script .= "
+        \$tableMap = {$this->getTableMapClass()}::getTableMap();
         \$criteria = " . $this->getQueryClassName() . '::create();';
         foreach ($this->getTable()->getPrimaryKey() as $column) {
             $dataAccessExpression = '$this->' . $column->getLowercasedName();
@@ -2890,9 +2892,10 @@ abstract class " . $this->getUnqualifiedClassName() . $parentClass . ' implement
                 $uuidSwapFlag = $this->getUuidSwapFlagLiteral();
                 $dataAccessExpression = "UuidConverter::uuidToBin($dataAccessExpression, $uuidSwapFlag)";
             }
-            $columnConstant = $this->getColumnConstant($column);
+            $columnName = $column->getName();
             $script .= "
-        \$criteria->add($columnConstant, $dataAccessExpression);";
+        \${$columnName}Column = new LocalColumnExpression(\$criteria, \$tableMap->getName(), \$tableMap->getColumn('$columnName'));
+        \$criteria->add(\${$columnName}Column, $dataAccessExpression);";
         }
     }
 
@@ -2976,14 +2979,17 @@ abstract class " . $this->getUnqualifiedClassName() . $parentClass . ' implement
     protected function addBuildCriteriaBody(string &$script): void
     {
         $script .= "
+        \$tableMap = {$this->getTableMapClass()}::getTableMap();
         \$criteria = new Criteria(" . $this->getTableMapClass() . "::DATABASE_NAME);
 ";
         foreach ($this->getTable()->getColumns() as $col) {
             $accessValueStatement = $this->getAccessValueStatement($col);
             $columnConstant = $this->getColumnConstant($col);
+            $columnName = $col->getName();
             $script .= "
         if (\$this->isColumnModified($columnConstant)) {
-            \$criteria->add($columnConstant, $accessValueStatement);
+            \${$columnName}Column = new LocalColumnExpression(\$criteria, \$tableMap->getName(), \$tableMap->getColumn('$columnName'));
+            \$criteria->add(\${$columnName}Column, $accessValueStatement);
         }";
         }
     }
