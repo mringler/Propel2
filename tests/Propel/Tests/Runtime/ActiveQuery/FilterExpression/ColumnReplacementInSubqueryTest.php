@@ -27,13 +27,13 @@ class ColumnReplacementInSubqueryTest extends TestCaseFixtures
                 'inputClause' => 'saut.FirstName = ?',
                 'value'  => 'asdf',
                 'expectedClause' => 'saut.first_name = :p1',
-                'expectedParam' => [['type' => \PDO::PARAM_STR, 'value' => 'asdf']],
+                'expectedParam' => [['table' => 'author', 'column' => 'first_name', 'value' => 'asdf']],
             ],[
                 'description' => 'Should find column type from subquery',
                 'inputClause' => 'saut.Age = ?',
                 'value'  => 'asdf',
                 'expectedClause' => 'saut.age = :p1',
-                'expectedParam' => [['type' => \PDO::PARAM_INT, 'value' => 'asdf']],
+                'expectedParam' => [['table' => 'author', 'column' => 'age', 'value' => 'asdf']],
             ],[
                 'description' => 'Should resolve AS columns from subquery',
                 'inputClause' => 'saut.MyAsColumn = ?',

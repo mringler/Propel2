@@ -143,8 +143,6 @@ class ModelCriteria extends BaseModelCriteria
      * $c->condition('cond1', 'b.Title = ?', 'foo');
      * </code>
      *
-     * @see Criteria::add()
-     *
      * @param string $conditionName A name to store the condition for a later combination with combine()
      * @param string $clause The pseudo SQL clause, e.g. 'AuthorId = ?'
      * @param mixed $value A value for the condition
@@ -154,7 +152,7 @@ class ModelCriteria extends BaseModelCriteria
      */
     public function condition(string $conditionName, string $clause, $value = null, $bindingType = null)
     {
-        $this->addCond($conditionName, $this->getCriterionForClause($clause, $value, $bindingType), null, $bindingType);
+        $this->addCond($conditionName, $this->buildFilterForClause($clause, $value, $bindingType), null, $bindingType);
 
         return $this;
     }
@@ -166,8 +164,6 @@ class ModelCriteria extends BaseModelCriteria
      * <code>
      * $c->filterBy('Title', 'foo');
      * </code>
-     *
-     * @see Criteria::add()
      *
      * @param string $columnPhpName A string representing thecolumn phpName, e.g. 'AuthorId'
      * @param mixed $value A value for the condition
@@ -227,8 +223,6 @@ class ModelCriteria extends BaseModelCriteria
      *
      * @psalm-param literal-string|array $clause
      *
-     * @see Criteria::add()
-     *
      * @param array|string $clause A string representing the pseudo SQL clause, e.g. 'Book.AuthorId = ?'
      *   Or an array of condition names
      * @param mixed $value A value for the condition
@@ -240,10 +234,10 @@ class ModelCriteria extends BaseModelCriteria
     {
         if (is_array($clause)) {
             // where(array('cond1', 'cond2'), Criteria::LOGICAL_OR)
-            $criterion = $this->getCriterionForConditions($clause, $value);
+            $criterion = $this->buildMultipleFilters($clause, $value);
         } else {
             // where('Book.AuthorId = ?', 12)
-            $criterion = $this->getCriterionForClause($clause, $value, $bindingType);
+            $criterion = $this->buildFilterForClause($clause, $value, $bindingType);
         }
 
         $this->addUsingOperator($criterion, null, null);
@@ -318,10 +312,10 @@ class ModelCriteria extends BaseModelCriteria
     {
         if (is_array($clause)) {
             // having(array('cond1', 'cond2'), Criteria::LOGICAL_OR)
-            $criterion = $this->getCriterionForConditions($clause, $value);
+            $criterion = $this->buildMultipleFilters($clause, $value);
         } else {
             // having('Book.AuthorId = ?', 12)
-            $criterion = $this->getCriterionForClause($clause, $value, $bindingType);
+            $criterion = $this->buildFilterForClause($clause, $value, $bindingType);
         }
 
         $this->addHaving($criterion);
@@ -695,7 +689,7 @@ class ModelCriteria extends BaseModelCriteria
         if (!$join->getJoinCondition() instanceof ColumnFilterInterface) {
             $join->buildJoinCondition($this);
         }
-        $filter = $this->getCriterionForClause($clause, $value, $bindingType);
+        $filter = $this->buildFilterForClause($clause, $value, $bindingType);
         $join->getJoinConditionOrFail()->addFilter($filter, $operator ?: ClauseList::AND_OPERATOR_LITERAL);
 
         return $this;
@@ -1583,11 +1577,13 @@ class ModelCriteria extends BaseModelCriteria
             $class = $this->getModelName();
             /** @phpstan-var \Propel\Runtime\ActiveRecord\ActiveRecordInterface $obj */
             $obj = new $class();
-            foreach ($this->keys() as $key) {
-                if (!method_exists($obj, 'setByName')) {
-                    continue;
+            if (method_exists($obj, 'setByName')) {
+                // turn column filters to values (this is very messy...)
+                foreach ($this->filterCollector->getColumnFilters() as $filter) {
+                    $columnIdentifier = $filter->getLocalColumnName();
+                    $value = $filter->getValue();
+                    $obj->setByName($columnIdentifier, $value, TableMap::TYPE_COLNAME);
                 }
-                $obj->setByName($key, $this->getValue($key), TableMap::TYPE_COLNAME);
             }
             $ret = $this->getFormatter()->formatRecord($obj);
         }
@@ -1623,12 +1619,14 @@ class ModelCriteria extends BaseModelCriteria
         if (count($pkCols) === 1) {
             // simple primary key
             $pkCol = $pkCols[0];
-            $criteria->add($pkCol->getFullyQualifiedName(), $key);
+            $column = new LocalColumnExpression($this, $this->getTableNameInQuery(), $pkCol);
+            $criteria->addFilter($column, $key);
         } else {
             // composite primary key
             foreach ($pkCols as $pkCol) {
                 $keyPart = array_shift($key);
-                $criteria->add($pkCol->getFullyQualifiedName(), $keyPart);
+                $column = new LocalColumnExpression($this, $this->getTableNameInQuery(), $pkCol);
+                $criteria->addFilter($column, $keyPart);
             }
         }
         $dataFetcher = $criteria->doSelect($con);
@@ -1664,8 +1662,9 @@ class ModelCriteria extends BaseModelCriteria
         $pkCols = $this->getTableMapOrFail()->getPrimaryKeys();
         if (count($pkCols) === 1) {
             // simple primary key
-            $pkCol = array_shift($pkCols);
-            $criteria->add($pkCol->getFullyQualifiedName(), $keys, Criteria::IN);
+            $pkColumnMap = array_shift($pkCols);
+            $column = new LocalColumnExpression($this, $this->getTableNameInQuery(), $pkColumnMap);
+            $criteria->addFilter($column, $keys, Criteria::IN);
         } else {
             // composite primary key
             throw new PropelException('Multiple object retrieval is not implemented for composite primary keys');
@@ -1918,7 +1917,7 @@ class ModelCriteria extends BaseModelCriteria
      */
     public function delete(?ConnectionInterface $con = null): int
     {
-        if (count($this->getColumnFilter()) === 0) {
+        if ($this->countColumnFilters() === 0) {
             throw new PropelException(__METHOD__ . ' expects a Criteria with at least one condition. Use deleteAll() to delete all the rows of a table');
         }
 
@@ -2070,7 +2069,7 @@ class ModelCriteria extends BaseModelCriteria
      * Issue an UPDATE query based the current ModelCriteria and a list of changes.
      * This method is called by ModelCriteria::update() inside a transaction.
      *
-     * @param \Propel\Runtime\ActiveQuery\Criteria|array $updateValues Associative array of keys and values to replace
+     * @param \Propel\Runtime\ActiveQuery\Criteria|array|null $updateValues Associative array of keys and values to replace
      * @param \Propel\Runtime\Connection\ConnectionInterface $con a connection object
      * @param bool $forceIndividualSaves If false (default), the resulting call is a Criteria::doUpdate(), otherwise it is a series of save() calls on all the found objects
      *
@@ -2096,20 +2095,19 @@ class ModelCriteria extends BaseModelCriteria
         } else {
             // update rows in a single query
             if ($updateValues instanceof Criteria) {
-                $set = $updateValues;
-            } else {
-                $set = new Criteria($this->getDbName());
+                $updateValues->turnFiltersToUpdateValues();
+                $this->updateValues->merge($updateValues->updateValues);
+            } elseif (is_array($updateValues)) {
+                $tableMap = $this->getTableMapOrFail();
                 foreach ($updateValues as $columnName => $value) {
-                    $realColumnName = $this->getTableMapOrFail()->getColumnByPhpName($columnName)->getFullyQualifiedName();
-                    $set->add($realColumnName, $value);
+                    $columnMap = $tableMap->getColumnByPhpName($columnName);
+                    $this->setUpdateValue($columnMap, $value);
                 }
             }
 
-            $affectedRows = parent::doUpdate($set, $con);
-            if ($this->getTableMapOrFail()->extractPrimaryKey($this)) {
-                // this criteria updates only one object defined by a concrete primary key,
-                // therefore there's no need to remove anything from the pool
-            } else {
+            $affectedRows = parent::doUpdate(null, $con);
+            if (!$this->updateAffectsSingleRow()) {
+                // clear instance pool if update affects multiple rows (we don't know which)
                 $modelTableMapName = $this->modelTableMapName;
                 if ($modelTableMapName === null) {
                     throw new LogicException('modelTableMapName is not set');
@@ -2123,7 +2121,33 @@ class ModelCriteria extends BaseModelCriteria
     }
 
     /**
-     * Creates a Criterion object based on a list of existing condition names and a comparator
+     * Tests if the filters in this query cover the full primary key.
+     *
+     * Currently does not consider operator, OR, etc. see commented test cases
+     * in {@see \Propel\Tests\Runtime\ActiveQuery\ModelCriteriaPkFilterDetectionTest::UpdateAffectsSingleRowDataProvider()}.
+     *
+     * @return bool
+     */
+    protected function updateAffectsSingleRow(): bool
+    {
+        $pkCols = $this->getTableMapOrFail()->getPrimaryKeys();
+        if (count($pkCols) !== $this->countColumnFilters()) {
+            return false;
+        }
+
+        foreach ($pkCols as $pkCol) {
+            $fqName = $pkCol->getFullyQualifiedName();
+            $filter = $this->findFilterByColumn($fqName);
+            if (!$filter) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @deprecated use aptly named {@see static::buildMultipleFilters()}
      *
      * @param array $conditions The list of condition names, e.g. array('cond1', 'cond2')
      * @param string|null $operator An operator, Criteria::LOGICAL_AND (default) or Criteria::LOGICAL_OR
@@ -2131,6 +2155,19 @@ class ModelCriteria extends BaseModelCriteria
      * @return \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface A Criterion or ModelCriterion object
      */
     protected function getCriterionForConditions(array $conditions, ?string $operator = null): ColumnFilterInterface
+    {
+        return $this->buildMultipleFilters($conditions, $operator);
+    }
+
+    /**
+     * Creates a Criterion object based on a list of existing condition names and a comparator
+     *
+     * @param array $conditions The list of condition names, e.g. array('cond1', 'cond2')
+     * @param string|null $operator An operator, Criteria::LOGICAL_AND (default) or Criteria::LOGICAL_OR
+     *
+     * @return \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface A Criterion or ModelCriterion object
+     */
+    protected function buildMultipleFilters(array $conditions, ?string $operator = null): ColumnFilterInterface
     {
         $operator = ($operator === null) ? Criteria::LOGICAL_AND : $operator;
         $this->combine($conditions, $operator, 'propel_temp_name');
@@ -2141,7 +2178,21 @@ class ModelCriteria extends BaseModelCriteria
     }
 
     /**
-     * Creates a Criterion object based on a SQL clause and a value
+     * @deprecated use aptly named {@see static::buildFilterForClause()}
+     *
+     * @param string $clause The pseudo SQL clause, e.g. 'AuthorId = ?'
+     * @param mixed $value A value for the condition
+     * @param int|null $bindingType
+     *
+     * @return \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface a Criterion object
+     */
+    protected function getCriterionForClause(string $clause, $value, ?int $bindingType = null): ColumnFilterInterface
+    {
+        return $this->buildFilterForClause($clause, $value, $bindingType);
+    }
+
+    /**
+     * Creates a Filter based on a SQL clause and a value
      * Uses introspection to translate the column phpName into a fully qualified name
      *
      * @param string $clause The pseudo SQL clause, e.g. 'AuthorId = ?'
@@ -2152,7 +2203,7 @@ class ModelCriteria extends BaseModelCriteria
      *
      * @return \Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface a Criterion object
      */
-    protected function getCriterionForClause(string $clause, $value, ?int $bindingType = null): ColumnFilterInterface
+    protected function buildFilterForClause(string $clause, $value, ?int $bindingType = null): ColumnFilterInterface
     {
         if ($bindingType) {
             return new FilterClauseLiteralWithPdoTypes($this, $clause, $value, $bindingType);
@@ -2360,22 +2411,20 @@ class ModelCriteria extends BaseModelCriteria
      *
      * @return static
      */
-    protected function addFilter(string $andOr, $columnOrClause, $value = null, $condition = null, bool $preferColumnCondition = true)
+    protected function addFilterWithConjunction(string $andOr, $columnOrClause, $value = null, $condition = null, bool $preferColumnCondition = true)
     {
         if (is_string($columnOrClause)) {
             $resolvedColumn = $this->resolveColumn($columnOrClause);
             $columnOrClause = $resolvedColumn;
         }
 
-        return parent::addFilter($andOr, $columnOrClause, $value, $condition, $preferColumnCondition);
+        return parent::addFilterWithConjunction($andOr, $columnOrClause, $value, $condition, $preferColumnCondition);
     }
 
     /**
      * @deprecated just use ModelCriteria::addUsingOperator(), local columns will be resolved anyway.
      *
      * Overrides Criteria::add() to force the use of a true table alias if it exists
-     *
-     * @see Criteria::add()
      *
      * @param string $qualifiedColumnName The colName of column to run the condition on (e.g. BookTableMap::ID)
      * @param mixed $value
@@ -2418,8 +2467,8 @@ class ModelCriteria extends BaseModelCriteria
         $params = [];
         $dbMap = Propel::getServiceContainer()->getDatabaseMap($this->getDbName());
 
-        foreach ($this->getColumnFilter() as $criterion) {
-            $criterion->collectParameters($params);
+        foreach ($this->filterCollector->getColumnFilters() as $filter) {
+            $filter->collectParameters($params);
         }
 
         $having = $this->getHaving();
@@ -2540,5 +2589,13 @@ class ModelCriteria extends BaseModelCriteria
         $this->isSelfSelected = true;
 
         return parent::addSelectColumn($name);
+    }
+
+    /**
+     * @return bool
+     */
+    protected function isEmpty(): bool
+    {
+        return parent::isEmpty() && !($this->formatter || $this->modelAlias || $this->with || $this->select);
     }
 }

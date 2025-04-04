@@ -12,6 +12,8 @@ namespace Propel\Tests;
  * The same as TestCaseFixtures but makes additional sure that
  * database schema has been updated.
  *
+ * Requires @group database for CI tests.
+ *
  * @author William Durand <william.durand1@gmail.com>
  */
 class TestCaseFixturesDatabase extends TestCaseFixtures

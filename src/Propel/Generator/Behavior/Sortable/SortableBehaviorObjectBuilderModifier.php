@@ -401,27 +401,23 @@ public function getScopeValue(\$returnNulls = true)
  * Wrap the setter for scope value
  *
  * @param mixed A array or a native type
+ *
  * @return \$this
  */
 public function setScopeValue(\$v)
-{
-";
-
+{";
         if ($this->behavior->hasMultipleScopes()) {
             foreach ($this->behavior->getScopes() as $idx => $scopeField) {
                 $script .= "
-    \$this->{$this->behavior->getColumnSetter($scopeField)}(\$v === null ? null : \$v[$idx]);
-";
+    \$this->{$this->behavior->getColumnSetter($scopeField)}(\$v === null ? null : \$v[$idx]);";
             }
         } else {
             $script .= "
-
-    \$this->{$this->getColumnSetter('scope_column')}(\$v);
-
-    return \$this;
-";
+    \$this->{$this->getColumnSetter('scope_column')}(\$v);";
         }
         $script .= "
+
+    return \$this;
 }
 ";
     }

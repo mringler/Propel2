@@ -16,16 +16,15 @@ class UpdateQueryExecutor extends AbstractQueryExecutor
 {
     /**
      * @param \Propel\Runtime\ActiveQuery\Criteria $criteria
-     * @param \Propel\Runtime\ActiveQuery\Criteria $updateValues
      * @param \Propel\Runtime\Connection\ConnectionInterface|null $con
      *
      * @return int
      */
-    public static function execute(Criteria $criteria, Criteria $updateValues, ?ConnectionInterface $con = null): int
+    public static function execute(Criteria $criteria, ?ConnectionInterface $con = null): int
     {
         $executor = new self($criteria, $con);
 
-        return $executor->runUpdate($updateValues);
+        return $executor->runUpdate();
     }
 
     /**
@@ -37,33 +36,35 @@ class UpdateQueryExecutor extends AbstractQueryExecutor
      * WHERE some_column = some value AND could_have_another_column =
      * another value AND so on.
      *
-     * @param \Propel\Runtime\ActiveQuery\Criteria $updateValues A Criteria object containing values used in set clause.
-     *
      * @return int The number of rows affected by last update statement.
      *             For most uses there is only one update statement executed, so this number will
      *             correspond to the number of rows affected by the call to this method.
      *             Note that the return value does require that this information is returned
      *             (supported) by the Propel db driver.
      */
-    protected function runUpdate(Criteria $updateValues): int
+    protected function runUpdate(): int
     {
-        $updateTablesColumns = $updateValues->getTablesColumns();
+        $updateValuesByTable = $this->criteria->getUpdateValues()->groupUpdateValuesByTable();
 
-        if (!$updateTablesColumns) {
+        if (!$updateValuesByTable) {
             return 0;
         }
 
-        $tablesColumns = $this->criteria->getTablesColumns();
-        $table = $this->criteria->getPrimaryTableName();
-        if (!$tablesColumns && $table) {
-            $tablesColumns = [$table => []];
+        $filtersByTable = $this->criteria->getFilterCollector()->groupFiltersByTable($this->criteria->getTableNameInQuery());
+        $table = $this->criteria->getTableNameInQuery();
+        if (!$filtersByTable && $table) {
+            $filtersByTable = [$table => []];
         }
 
-        $builder = new UpdateQuerySqlBuilder($this->criteria, $updateValues);
+        $builder = new UpdateQuerySqlBuilder($this->criteria);
 
         $affectedRows = 0;
-        foreach ($tablesColumns as $tableName => $columns) {
-            $preparedStatementDto = $builder->build($tableName, $columns);
+        foreach ($filtersByTable as $tableName => $filters) {
+            $updateValues = $updateValuesByTable[$tableName];
+            if (!$updateValues) {
+                continue;
+            }
+            $preparedStatementDto = $builder->build($tableName, $filters, $updateValues);
             /** @var \Propel\Runtime\Connection\StatementInterface $stmt */
             $stmt = $this->executeStatement($preparedStatementDto);
             $affectedRows += $stmt->rowCount();

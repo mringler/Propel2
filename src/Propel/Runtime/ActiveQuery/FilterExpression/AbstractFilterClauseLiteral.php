@@ -23,7 +23,7 @@ abstract class AbstractFilterClauseLiteral extends AbstractFilter
      * All clauses need resolved columns, otherwise they cannot be added
      * correctly to the query.
      *
-     * @see \Propel\Runtime\ActiveQuery\Criteria::add()
+     * @see \Propel\Runtime\ActiveQuery\Criteria::addFilter()
      * @see self::getLocalColumnName()
      *
      * @var array<\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression>
@@ -168,11 +168,11 @@ abstract class AbstractFilterClauseLiteral extends AbstractFilter
     }
 
     /**
-     * @return null
+     * @return string|null
      */
     public function getTableAlias(): ?string
     {
-        return null;
+        return $this->resolvedColumns ? $this->resolvedColumns[0]->getTableAlias() : null;
     }
 
     /**

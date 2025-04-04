@@ -234,9 +234,10 @@ class GeneratedObjectRelTest extends BookstoreEmptyTestBase
         $blc1 = BookClubListQuery::create()->findOneByGroupLeader('Crazyleggs');
         $nbBooks = $blc1->countBooks();
         $this->assertEquals(2, $nbBooks, 'countCrossRefFK() returns the correct list of objects');
+
         $query = BookQuery::create()
             ->filterByTitle('Harry Potter and the Order of the Phoenix');
-        $nbBooks = $blc1->countBooks($query);
+        $nbBooks = $blc1->countBooks($query); // adds a join
 
         $bla = BookListRelQuery::create(null)
             ->filterByBookClubList($blc1);
@@ -417,7 +418,7 @@ class GeneratedObjectRelTest extends BookstoreEmptyTestBase
         $books = $author->getBooks(null, $con);
         $sql = $con->getLastExecutedQuery();
         $author = $books[0]->getAuthor($con);
-        $this->assertEquals($sql, $con->getLastExecutedQuery(), 'refFK getter uses instance pool if possible');
+        $this->assertEquals($sql, $con->getLastExecutedQuery(), 'refFK getter uses instance pool instead of a new query');
     }
 
     /**

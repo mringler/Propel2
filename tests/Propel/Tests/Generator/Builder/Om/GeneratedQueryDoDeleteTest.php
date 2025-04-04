@@ -424,7 +424,7 @@ class GeneratedQueryDoDeleteTest extends BookstoreEmptyTestBase
         $name = 'A Sample Publisher - ' . time();
 
         $values = new Criteria();
-        $values->add(PublisherTableMap::COL_NAME, $name);
+        $values->setUpdateValue(PublisherTableMap::COL_NAME, $name, \PDO::PARAM_STR);
         PublisherTableMap::doInsert($values);
 
         $matches = PublisherQuery::create()->filterByName($name)->find();

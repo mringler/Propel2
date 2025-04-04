@@ -30,7 +30,7 @@ class LikeColumnFilter extends ColumnFilter
             /** @var \Propel\Runtime\Adapter\SqlAdapterInterface $adapter */
             $adapter = $this->query->getAdapter();
             if ($adapter instanceof PgsqlAdapter) {
-                $this->operator = ($this->operator === Criteria::LIKE) ? Criteria::ILIKE : Criteria::NOT_ILIKE;
+                $this->operator = ($this->operator === Criteria::LIKE || $this->operator === Criteria::ILIKE) ? Criteria::ILIKE : Criteria::NOT_ILIKE;
             } else {
                 // UPPER function needs to be set on param and field
                 $bindParam = $adapter->ignoreCase($bindParam);

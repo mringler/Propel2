@@ -2895,7 +2895,7 @@ abstract class " . $this->getUnqualifiedClassName() . $parentClass . ' implement
             $columnName = $column->getName();
             $script .= "
         \${$columnName}Column = new LocalColumnExpression(\$criteria, \$tableMap->getName(), \$tableMap->getColumn('$columnName'));
-        \$criteria->add(\${$columnName}Column, $dataAccessExpression);";
+        \$criteria->addFilter(\${$columnName}Column, $dataAccessExpression);";
         }
     }
 
@@ -2988,8 +2988,7 @@ abstract class " . $this->getUnqualifiedClassName() . $parentClass . ' implement
             $columnName = $col->getName();
             $script .= "
         if (\$this->isColumnModified($columnConstant)) {
-            \${$columnName}Column = new LocalColumnExpression(\$criteria, \$tableMap->getName(), \$tableMap->getColumn('$columnName'));
-            \$criteria->add(\${$columnName}Column, $accessValueStatement);
+            \$criteria->setUpdateValue(\$tableMap->getColumn('$columnName'), $accessValueStatement);
         }";
         }
     }
@@ -6391,7 +6390,7 @@ abstract class " . $this->getUnqualifiedClassName() . $parentClass . ' implement
             } elseif (!$this->getPlatform()->supportsInsertNullPk()) {
                 $script .= "
         // remove pkey col if it is null since this table does not accept that
-        if (\$criteria->containsKey($colConst) && !\$criteria->keyContainsValue($colConst) ) {
+        if (\$criteria->hasUpdateValue($colConst) && !\$criteria->keyContainsValue($colConst) ) {
             \$criteria->remove($colConst);
         }";
             }

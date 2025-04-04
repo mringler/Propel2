@@ -891,4 +891,14 @@ class Join
     {
         return $this->rightTableAlias === $identifier || $this->rightTableName === $identifier;
     }
+
+    /**
+     * @return void
+     */
+    public function invert(): void
+    {
+        $leftVals = [$this->leftTableName, $this->leftTableAlias, $this->left, $this->leftValues];
+        [$this->leftTableName, $this->leftTableAlias, $this->left, $this->leftValues] = [$this->rightTableName, $this->rightTableAlias, $this->right, $this->rightValues];
+        [$this->rightTableName, $this->rightTableAlias, $this->right, $this->rightValues] = $leftVals;
+    }
 }

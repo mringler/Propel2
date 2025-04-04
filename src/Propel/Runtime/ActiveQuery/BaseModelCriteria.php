@@ -325,24 +325,6 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
     }
 
     /**
-     * Returns the TableMap object for this Criteria
-     *
-     * @throws \Propel\Runtime\Exception\LogicException
-     *
-     * @return \Propel\Runtime\Map\TableMap
-     */
-    public function getTableMapOrFail(): TableMap
-    {
-        $tableMap = $this->getTableMap();
-
-        if ($tableMap === null) {
-            throw new LogicException('Table map is not defined.');
-        }
-
-        return $tableMap;
-    }
-
-    /**
      * Returns the name of the table as used in the query.
      *
      * Either the SQL name or an alias.

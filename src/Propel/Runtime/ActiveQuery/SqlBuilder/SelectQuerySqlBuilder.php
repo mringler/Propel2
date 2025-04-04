@@ -10,6 +10,7 @@ namespace Propel\Runtime\ActiveQuery\SqlBuilder;
 
 use Propel\Runtime\ActiveQuery\Criteria;
 use Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface;
+use Propel\Runtime\ActiveQuery\ModelCriteria;
 
 /**
  * This class produces the base object class (e.g. BaseMyTable) which contains
@@ -49,7 +50,8 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
         $selectSql = $this->buildSelectClause($sourceTableNamesCollector);
         $joinClauses = $this->buildJoinClauses($params, $sourceTableNamesCollector); // we want params from joins resolved before params from where
         $whereSql = $this->buildWhereClause($params, $sourceTableNamesCollector);
-        $fromSql = $this->buildFromClause($params, $sourceTableNamesCollector, $joinClauses);
+        $ignoreCollectedTableNames = $this->criteria instanceof ModelCriteria && $this->criteria->getPrimaryTableName(); // HACK: Criteria relies on table information from outside. Tests use ModelCriteria without model.
+        $fromSql = $this->buildFromClause($params, $ignoreCollectedTableNames ? [] : $sourceTableNamesCollector, $joinClauses);
 
         [$orderBySql, $additionalSelectStatements] = $this->buildOrderByClause($params);
         $selectSql .= $additionalSelectStatements;
@@ -224,14 +226,15 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
      */
     protected function buildWhereClause(?array &$params, array &$sourceTableNamesCollector): ?string
     {
-        $columnNameToCriterions = $this->criteria->getColumnFilter();
-        if (!$columnNameToCriterions) {
+        $columnFilters = $this->criteria->getColumnFilters();
+        if (!$columnFilters) {
             return null;
         }
 
         $whereClause = [];
 
-        foreach ($columnNameToCriterions as $criterion) {
+        foreach ($columnFilters as $criterion) {
+            $p = [];
             foreach ($criterion->getAttachedFilter() as $attachedCriterion) {
                 $rawTableName = $attachedCriterion->getTableAlias();
                 if (!$rawTableName) {

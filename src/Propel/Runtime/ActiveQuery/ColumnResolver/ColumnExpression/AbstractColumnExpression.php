@@ -56,17 +56,20 @@ abstract class AbstractColumnExpression
 
     /**
      * @param bool $useQuotesIfEnabled
+     * @param bool $columnNameOnly
      *
      * @return string
      */
-    public function getColumnExpressionInQuery(bool $useQuotesIfEnabled = false): string
+    public function getColumnExpressionInQuery(bool $useQuotesIfEnabled = false, bool $columnNameOnly = false): string
     {
+        $tableAlias = $columnNameOnly ? null : $this->getTableAlias();
+
         if (!$useQuotesIfEnabled) {
-            return $this->tableAlias ? "{$this->tableAlias}.{$this->columnName}" : $this->columnName;
+            return $tableAlias ? "{$tableAlias}.{$this->columnName}" : $this->columnName;
         }
         $tableMap = $this->hasColumnMap() ? $this->getColumnMap()->getTableMap() : null;
 
-        return $this->sourceQuery->quoteColumnIdentifier($this->tableAlias, $this->columnName, $tableMap);
+        return $this->sourceQuery->quoteColumnIdentifier($tableAlias, $this->columnName, $tableMap);
     }
 
     /**

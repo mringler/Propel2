@@ -8,7 +8,6 @@
 
  namespace Propel\Runtime\ActiveQuery\ColumnResolver;
 
-use LogicException;
 use Propel\Runtime\ActiveQuery\BaseModelCriteria;
 use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression;
 use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\LocalColumnExpression;
@@ -69,7 +68,6 @@ class ColumnResolver
      * @param bool $hasAccessToOutputColumns Set true if column is accessed from output of the query, i.e. in HAVING or when query is a subquery.
      * @param bool $failSilently
      *
-     * @throws \LogicException
      * @throws \Propel\Runtime\ActiveQuery\Exception\UnknownColumnException
      * @throws \Propel\Runtime\ActiveQuery\Exception\UnknownModelException
      *
@@ -125,7 +123,8 @@ class ColumnResolver
             return new LocalColumnExpression($sourceQuery, $tableAlias, $columnMap);
         } elseif ($sourceQuery->getColumnForAs($columnIdentifier)) {
             // local column
-            throw new LogicException('AS columns should not be resolved like this...');
+           // throw new LogicException('AS columns should not be resolved like this...');
+            echo 'inv';
         }
 
         if (!$failSilently) {

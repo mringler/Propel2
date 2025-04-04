@@ -78,10 +78,19 @@ class RemoteTypedColumnExpression extends RemoteColumnExpression
      *
      * @param mixed $value
      *
-     * @return array{type: int, value: mixed}
+     * @return array{type: int, value: mixed}| array{column: string, table: string|null, value: mixed}
      */
     public function buildPdoParam($value): array
     {
+        if ($this->columnMap) {
+            // always use columnMap if available, it can unpack values
+            return [
+                'column' => $this->columnMap->getName(),
+                'table' => $this->columnMap->getTableName(),
+                'value' => $value,
+            ];
+        }
+
         return [
             'type' => $this->pdoType,
             'value' => $value,

@@ -41,15 +41,15 @@ class DeleteQueryExecutor extends AbstractQueryExecutor
             throw new PropelException('Delete does not support join');
         }
 
-        $tables = $this->criteria->getTablesColumns();
-        if (!$tables) {
+        $tableFilters = $this->criteria->getFilterCollector()->groupFiltersByTable($this->criteria->getTableNameInQuery());
+        if (!$tableFilters) {
             throw new PropelException('Cannot delete from an empty Criteria');
         }
 
         $affectedRows = 0;
         $builder = new DeleteQuerySqlBuilder($this->criteria);
-        foreach ($tables as $tableName => $columnNames) {
-            $preparedStatementDto = $builder->build($tableName, $columnNames);
+        foreach ($tableFilters as $tableName => $filters) {
+            $preparedStatementDto = $builder->build($tableName, $filters);
             /** @var \Propel\Runtime\Connection\StatementInterface $stmt */
             $stmt = $this->executeStatement($preparedStatementDto);
             $affectedRows += $stmt->rowCount();

@@ -1182,7 +1182,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
     public static function populateObject(array \$row, int \$offset = 0, string \$indexType = TableMap::TYPE_NUM): array
     {
         \$key = {$this->getTableMapClassName()}::getPrimaryKeyHashFromRow(\$row, \$offset, \$indexType);
-        if (null !== (\$obj = {$this->getTableMapClassName()}::getInstanceFromPool(\$key))) {
+        if ((\$obj = {$this->getTableMapClassName()}::getInstanceFromPool(\$key)) !== null) {
             // We no longer rehydrate the object, since this can cause data loss.
             // See http://www.propelorm.org/ticket/509
             // \$obj->hydrate(\$row, \$offset, true); // rehydrate
@@ -1250,7 +1250,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
         // populate the object(s)
         while (\$row = \$dataFetcher->fetch()) {
             \$key = {$this->getTableMapClassName()}::getPrimaryKeyHashFromRow(\$row, 0, \$dataFetcher->getIndexType());
-            if (null !== (\$obj = {$this->getTableMapClassName()}::getInstanceFromPool(\$key))) {
+            if ((\$obj = {$this->getTableMapClassName()}::getInstanceFromPool(\$key)) !== null) {
                 // We no longer rehydrate the object, since this can cause data loss.
                 // See http://www.propelorm.org/ticket/509
                 // \$obj->hydrate(\$row, 0, true); // rehydrate
@@ -1542,7 +1542,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
     /**
      * Performs an INSERT on the database, given a " . $this->getObjectClassName() . " or Criteria object.
      *
-     * @param mixed \$criteria Criteria or " . $this->getObjectClassName() . " object containing data that is used to create the INSERT statement.
+     * @param \Propel\Runtime\ActiveQuery\Criteria|{$this->getObjectClassName()} \$criteria Criteria or " . $this->getObjectClassName() . " object containing data that is used to create the INSERT statement.
      * @param ConnectionInterface \$con the ConnectionInterface connection to use
      * @return mixed The new primary key.
      * @throws \Propel\Runtime\Exception\PropelException Any exceptions caught during processing will be
@@ -1555,7 +1555,8 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
         }
 
         if (\$criteria instanceof Criteria) {
-            \$criteria = clone \$criteria; // rename for clarity
+            \$criteria = clone \$criteria;
+            \$criteria->turnFiltersToUpdateValues();
         } else {
             \$criteria = \$criteria->buildCriteria(); // build Criteria from " . $this->getObjectClassName() . " object
         }
@@ -1569,7 +1570,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
                 && !$table->isAllowPkInsert()
             ) {
                 $script .= "
-        if (\$criteria->containsKey(" . $this->getColumnConstant($col) . ') && $criteria->keyContainsValue(' . $this->getColumnConstant($col) . ") ) {
+        if (\$criteria->hasUpdateValue(" . $this->getColumnConstant($col) . ") ) {
             throw new PropelException('Cannot insert a value for auto-increment primary key ('." . $this->getColumnConstant($col) . ".')');
         }
 ";
@@ -1588,7 +1589,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
             ) {
                 $script .= "
         // remove pkey col if it is null since this table does not accept that
-        if (\$criteria->containsKey(" . $this->getColumnConstant($col) . ') && !$criteria->keyContainsValue(' . $this->getColumnConstant($col) . ") ) {
+        if (\$criteria->containsKey(" . $this->getColumnConstant($col) . ') && !$criteria->hasUpdateValue(' . $this->getColumnConstant($col) . ") ) {
             \$criteria->remove(" . $this->getColumnConstant($col) . ");
         }
 ";

@@ -32,14 +32,14 @@ class DeleteQuerySqlBuilder extends AbstractSqlQueryBuilder
      * Create a Sql DELETE statement.
      *
      * @param string $tableName
-     * @param array<string> $columnNames
+     * @param array<\Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface> $columnFilters
      *
      * @return \Propel\Runtime\ActiveQuery\SqlBuilder\PreparedStatementDto
      */
-    public function build(string $tableName, array $columnNames): PreparedStatementDto
+    public function build(string $tableName, array $columnFilters): PreparedStatementDto
     {
         $deleteFrom = $this->buildDeleteFromClause($tableName);
-        $whereDto = $this->buildWhereClause($columnNames);
+        $whereDto = $this->buildWhereClause($columnFilters);
         $where = $whereDto->getSqlStatement();
         $deleteStatement = "$deleteFrom $where";
         $params = $whereDto->getParameters();
@@ -78,16 +78,15 @@ class DeleteQuerySqlBuilder extends AbstractSqlQueryBuilder
     /**
      * Build WHERE clause from the given column names.
      *
-     * @param array<string> $columnNames
+     * @param array<\Propel\Runtime\ActiveQuery\FilterExpression\ColumnFilterInterface> $columnFilters
      *
      * @return \Propel\Runtime\ActiveQuery\SqlBuilder\PreparedStatementDto
      */
-    protected function buildWhereClause(array $columnNames): PreparedStatementDto
+    protected function buildWhereClause(array $columnFilters): PreparedStatementDto
     {
         $whereClause = [];
         $params = [];
-        foreach ($columnNames as $columnName) {
-            $filter = $this->criteria->getCriterion($columnName);
+        foreach ($columnFilters as $filter) {
             $whereClause[] = $this->buildStatementFromCriterion($filter, $params);
         }
         $whereStatement = 'WHERE ' . implode(' AND ', $whereClause);

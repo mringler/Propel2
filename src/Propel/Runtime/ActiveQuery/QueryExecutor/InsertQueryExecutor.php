@@ -69,9 +69,7 @@ class InsertQueryExecutor extends AbstractQueryExecutor
     protected function runInsert()
     {
         $this->setIdFromSequence();
-
         $preparedStatementDto = InsertQuerySqlBuilder::createInsertSql($this->criteria);
-
         $this->executeStatement($preparedStatementDto);
 
         return $this->retrieveLastInsertedId();
@@ -84,23 +82,23 @@ class InsertQueryExecutor extends AbstractQueryExecutor
      */
     protected function setIdFromSequence(): void
     {
-        if ($this->primaryKeyColumn === null || !$this->primaryKeyColumn->getTable()->isUseIdGenerator() || !$this->adapter->isGetIdBeforeInsert()) {
+        if ($this->primaryKeyColumn === null || !$this->primaryKeyColumn->getTableMap()->isUseIdGenerator() || !$this->adapter->isGetIdBeforeInsert()) {
             return;
         }
 
         $pkFullName = $this->primaryKeyColumn->getFullyQualifiedName();
-        if ($this->criteria->keyContainsValue($pkFullName)) {
+        if ($this->criteria->getUpdateValue($pkFullName) !== null) {
             return;
         }
 
-        $keyInfo = $this->primaryKeyColumn->getTable()->getPrimaryKeyMethodInfo();
+        $keyInfo = $this->primaryKeyColumn->getTableMap()->getPrimaryKeyMethodInfo();
         $id = null;
         try {
             $id = $this->adapter->getId($this->con, $keyInfo);
         } catch (Throwable $e) {
             throw new PropelException('Unable to get sequence id.', 0, $e);
         }
-        $this->criteria->add($pkFullName, $id);
+        $this->criteria->setUpdateValue($pkFullName, $id);
     }
 
     /**
@@ -110,10 +108,10 @@ class InsertQueryExecutor extends AbstractQueryExecutor
      */
     protected function retrieveLastInsertedId()
     {
-        if ($this->primaryKeyColumn === null || !$this->primaryKeyColumn->getTable()->isUseIdGenerator() || !$this->adapter->isGetIdAfterInsert()) {
+        if ($this->primaryKeyColumn === null || !$this->primaryKeyColumn->getTableMap()->isUseIdGenerator() || !$this->adapter->isGetIdAfterInsert()) {
             return null;
         }
-        $keyInfo = $this->primaryKeyColumn->getTable()->getPrimaryKeyMethodInfo();
+        $keyInfo = $this->primaryKeyColumn->getTableMap()->getPrimaryKeyMethodInfo();
         try {
             return $this->adapter->getId($this->con, $keyInfo);
         } catch (Throwable $e) {

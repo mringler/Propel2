@@ -619,6 +619,7 @@ abstract class PdoAdapter
 
                 continue;
             }
+            // TODO resolve column map on input
             $cMap = $dbMap->getTable($param['table'])->getColumn($param['column']);
             $this->bindValue($stmt, $parameter, $value, $cMap, $position);
         }

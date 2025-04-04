@@ -10,7 +10,6 @@ namespace Propel\Tests\Runtime\Util;
 
 use Propel\Runtime\ActiveQuery\Criteria;
 use Propel\Runtime\ActiveQuery\QueryExecutor\QueryExecutionException;
-use Propel\Runtime\Propel;
 use Propel\Tests\Bookstore\BookQuery;
 use Propel\Tests\Bookstore\Map\BookTableMap;
 use Propel\Tests\Helpers\Bookstore\BookstoreTestBase;
@@ -58,12 +57,11 @@ class TableMapExceptionsTest extends BookstoreTestBase
     {
         $c1 = new Criteria();
         $c1->setPrimaryTableName(BookTableMap::TABLE_NAME);
-        $c1->add(BookTableMap::COL_ID, 12, ' BAD SQL');
-        $c2 = new Criteria();
-        $c2->add(BookTableMap::COL_TITLE, 'Foo');
+        $c1->setUpdateValue(BookTableMap::COL_ID, 12);
 
-        $this->expectException(QueryExecutionException::class);
-        $c1->doUpdate($c2, Propel::getServiceContainer()->getWriteConnection(BookTableMap::DATABASE_NAME));
+        $c1->setUpdateValue('book.unknown_column', 'Foo', \PDO::PARAM_STR);
+        $this->expectException(\Propel\Runtime\ActiveQuery\QueryExecutor\QueryExecutionException::class);
+        $c1->doUpdate(null,$this->con);
     }
 
     /**
@@ -76,8 +74,8 @@ class TableMapExceptionsTest extends BookstoreTestBase
         }
         $c = new Criteria();
         $c->setPrimaryTableName(BookTableMap::TABLE_NAME);
-        $c->add(BookTableMap::COL_ID, 'lkhlkhj');
-        $c->add(BookTableMap::COL_AUTHOR_ID, 'lkhlkhj');
+        $c->setUpdateValue(BookTableMap::COL_ID, 'lkhlkhj');
+        $c->setUpdateValue(BookTableMap::COL_AUTHOR_ID, 'lkhlkhj');
 
         $this->expectException(QueryExecutionException::class);
         $c->doInsert($this->con);

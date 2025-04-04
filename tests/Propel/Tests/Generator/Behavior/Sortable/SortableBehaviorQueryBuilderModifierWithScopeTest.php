@@ -46,11 +46,11 @@ class SortableBehaviorQueryBuilderModifierWithScopeTest extends TestCase
          row4
         */
         $query = SortableTable12Query::create()->inList(1);
-        $expectedQuery = SortableTable12Query::create()->add(SortableTable12TableMap::COL_MY_SCOPE_COLUMN, 1, Criteria::EQUAL);
+        $expectedQuery = SortableTable12Query::create()->addFilter(SortableTable12TableMap::COL_MY_SCOPE_COLUMN, 1, Criteria::EQUAL);
         $this->assertEquals($expectedQuery, $query, 'inList() filters the query by scope');
         $this->assertEquals(4, $query->count(), 'inList() filters the query by scope');
         $query = SortableTable12Query::create()->inList(2);
-        $expectedQuery = SortableTable12Query::create()->add(SortableTable12TableMap::COL_MY_SCOPE_COLUMN, 2, Criteria::EQUAL);
+        $expectedQuery = SortableTable12Query::create()->addFilter(SortableTable12TableMap::COL_MY_SCOPE_COLUMN, 2, Criteria::EQUAL);
         $this->assertEquals($expectedQuery, $query, 'inList() filters the query by scope');
         $this->assertEquals(2, $query->count(), 'inList() filters the query by scope');
     }

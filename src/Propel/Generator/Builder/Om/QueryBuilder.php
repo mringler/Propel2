@@ -473,7 +473,7 @@ class QueryBuilder extends AbstractOMBuilder
             return \$criteria;
         }
         \$query = new " . $classname . "();
-        if (null !== \$modelAlias) {
+        if (\$modelAlias !== null) {
             \$query->setModelAlias(\$modelAlias);
         }
         if (\$criteria instanceof Criteria) {
@@ -561,11 +561,7 @@ class QueryBuilder extends AbstractOMBuilder
 
         \$this->basePreSelect(\$con);
 
-        if (
-            \$this->formatter || \$this->modelAlias || \$this->with || \$this->select
-            || \$this->selectColumns || \$this->asColumns || \$this->selectModifiers
-            || \$this->map || \$this->having || \$this->joins
-        ) {
+        if (!\$this->isEmpty()) {
             return \$this->findPkComplex(\$key, \$con);
         }
 
@@ -989,7 +985,7 @@ class QueryBuilder extends AbstractOMBuilder
                 ($i > 0) && $script .= "\n";
                 $script .= "
             \$resolvedColumn$i = \$this->resolveLocalColumnByName('$colName');
-            \$filter$i = \$this->getCriterionForCondition(\$resolvedColumn$i, \$key[$i], Criteria::EQUAL);
+            \$filter$i = \$this->buildFilter(\$resolvedColumn$i, \$key[$i], Criteria::EQUAL);
             {$addOp}";
             }
             $script .= "
@@ -1130,7 +1126,7 @@ class QueryBuilder extends AbstractOMBuilder
             \$andOr = (\$comparison === Criteria::CONTAINS_SOME) ? Criteria::LOGICAL_OR : Criteria::LOGICAL_AND;
             \$operator = (\$comparison === Criteria::CONTAINS_NONE) ? Criteria::NOT_LIKE : Criteria::LIKE;
             foreach (\$$variableName as \$value) {
-                \$this->addFilter(\$andOr, \$resolvedColumn, \"%| \$value |%\", \$operator);
+                \$this->addFilterWithConjunction(\$andOr, \$resolvedColumn, \"%| \$value |%\", \$operator);
             }
             if (\$comparison == Criteria::CONTAINS_NONE) {
                 \$this->addOr(\$resolvedColumn, null, Criteria::ISNULL);

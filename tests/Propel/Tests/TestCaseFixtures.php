@@ -8,9 +8,10 @@
 
 namespace Propel\Tests;
 
-use PDO;
+use Propel\Runtime\Connection\ConnectionInterface;
 use Propel\Runtime\Propel;
 use ReflectionClass;
+use RuntimeException;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -69,19 +70,27 @@ class TestCaseFixtures extends TestCase
     protected static $activeConfigsVersion;
 
     /**
-     * Setup fixture. Needed here because we want to have a realistic code coverage value.
+     * Setup fixture.
      *
      * @return void
      */
-    protected function setUp(): void
+    public static function setUpBeforeClass(): void
     {
-        $dsn = $this->getFixturesConnectionDsn();
+        parent::setUpBeforeClass();
+        static::checkInit();
+    }
 
-        if ($this->getBuiltDsn() !== $dsn || (static::$withDatabaseSchema && $this->getLastBuildMode() !== 'fixtures-database')) {
-            $this->initializeFixtures($dsn);
+    /**
+     * @return void
+     */
+    protected static function checkInit(): void
+    {
+        $dsn = static::getFixturesConnectionDsn();
+        if ($dsn !== static::getBuiltDsn() || (static::$withDatabaseSchema && static::getLastBuildMode() !== 'fixtures-database')) {
+            static::initializeFixtures($dsn);
         }
 
-        $this->readAllRuntimeConfigs();
+        static::readAllRuntimeConfigs();
     }
 
     /**
@@ -89,16 +98,16 @@ class TestCaseFixtures extends TestCase
      *
      * @return void
      */
-    protected function initializeFixtures(string $dsn): void
+    protected static function initializeFixtures(string $dsn): void
     {
-        $input = $this->buildInputOptions($dsn);
+        $input = static::buildInputOptions($dsn);
         $output = new BufferedOutput();
-        $app = $this->buildApp();
+        $app = static::buildApp();
 
         if ($app->run($input, $output) === 0) { // Command::SUCCESS is not available on CI
-            $this->registerBuildStatus($dsn);
+            static::registerBuildStatus($dsn);
         } else {
-            $this->fail('Cannot initialize fixtures: ' . $output->fetch());
+            throw new RuntimeException('Cannot initialize fixtures: ' . $output->fetch());
         }
     }
 
@@ -107,7 +116,7 @@ class TestCaseFixtures extends TestCase
      *
      * @return void
      */
-    protected function registerBuildStatus(string $dsn): void
+    protected static function registerBuildStatus(string $dsn): void
     {
         $mode = (static::$withDatabaseSchema) ? 'fixtures-database' : 'fixtures-only';
 
@@ -121,14 +130,15 @@ class TestCaseFixtures extends TestCase
 
     /**
      * @param string $dsn
+     * @param \Propel\Runtime\Connection\ConnectionInterface|null $con
      *
      * @return \Symfony\Component\Console\Input\ArrayInput
      */
-    protected function buildInputOptions(string $dsn): ArrayInput
+    protected static function buildInputOptions(string $dsn, ?ConnectionInterface $con = null): ArrayInput
     {
         $options = [
             'command' => 'test:prepare',
-            '--vendor' => $this->getDriver(),
+            '--vendor' => static::loadDatabaseDriverName(),
             '--dsn' => $dsn,
             '--verbose' => true,
         ];
@@ -150,7 +160,7 @@ class TestCaseFixtures extends TestCase
     /**
      * @return \Symfony\Component\Console\Application
      */
-    protected function buildApp(): Application
+    protected static function buildApp(): Application
     {
         $finder = new Finder();
         $finder->files()->name('*.php')->in(__DIR__ . '/../../../src/Propel/Generator/Command')->depth(0);
@@ -175,7 +185,7 @@ class TestCaseFixtures extends TestCase
     /**
      * @return string|null
      */
-    protected function getLastBuildMode()
+    protected static function getLastBuildMode()
     {
         if (!static::$lastBuildMode && file_exists(static::INDICATOR_FILE_LOCATION) && ($h = fopen(static::INDICATOR_FILE_LOCATION, 'r'))) {
             fgets($h);
@@ -191,7 +201,7 @@ class TestCaseFixtures extends TestCase
      *
      * @return void
      */
-    protected function readAllRuntimeConfigs()
+    protected static function readAllRuntimeConfigs()
     {
         $currentConfigsVersion = static::$lastBuildMode . ':' . static::$lastBuildDsn;
         if (static::$activeConfigsVersion === $currentConfigsVersion) {
@@ -213,7 +223,7 @@ class TestCaseFixtures extends TestCase
      *
      * @return string
      */
-    protected function getBuiltDsn()
+    protected static function getBuiltDsn()
     {
         if (!static::$lastBuildDsn && file_exists(static::INDICATOR_FILE_LOCATION) && ($h = fopen(static::INDICATOR_FILE_LOCATION, 'r'))) {
             $firstLine = fgets($h);
@@ -258,7 +268,7 @@ class TestCaseFixtures extends TestCase
      *
      * @return string
      */
-    protected function getFixturesConnectionDsn()
+    protected static function getFixturesConnectionDsn()
     {
         $db = strtolower(getenv('DB'));
 
@@ -284,22 +294,25 @@ class TestCaseFixtures extends TestCase
 
     /**
      * Returns current database driver.
+     * 
+     * @param \Propel\Runtime\Connection\ConnectionInterface|null $con
      *
+     * @return string
+     */
+    protected static function loadDatabaseDriverName(?ConnectionInterface $con = null)
+    {
+        $db = strtolower(getenv('DB'));
+
+        return !$db || 'agnostic' === $db ?  'mysql' : $db;
+    }
+
+    /**
+     * Returns current database driver.
+     * 
      * @return string
      */
     protected function getDriver()
     {
-        $driver = $this->con ? $this->con->getAttribute(PDO::ATTR_DRIVER_NAME) : null;
-
-        if ($driver === null && $currentDSN = $this->getBuiltDsn()) {
-            $driver = explode(':', $currentDSN)[0];
-        }
-
-        $db = strtolower(getenv('DB'));
-        if (!$db || 'agnostic' === $db) {
-            $db = 'mysql';
-        }
-
-        return $db ?: strtolower($driver);
+        return static::loadDatabaseDriverName();
     }
 }

@@ -63,7 +63,7 @@ abstract class AbstractSqlQueryBuilder
         if (!$realTableName) {
             return [$tableName, $tableName];
         }
-        $aliasedTableName = $realTableName . ' ' . $tableName;
+        $aliasedTableName = "$realTableName $tableName";
 
         return [$realTableName, $aliasedTableName];
     }
@@ -96,28 +96,15 @@ abstract class AbstractSqlQueryBuilder
     }
 
     /**
-     * @param array<string> $columnNames
-     * @param \Propel\Runtime\ActiveQuery\Criteria|null $values
+     * @param array<\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\UpdateColumn\AbstractUpdateColumn> $updateColumns
      *
      * @return array
      */
-    public function buildParams(array $columnNames, ?Criteria $values = null): array
+    public function buildParamsFromUpdateValues(array $updateColumns): array
     {
-        if (!$values) {
-            $values = $this->criteria;
-        }
-
         $params = [];
-        foreach ($columnNames as $key) {
-            if (!$values->hasFilterOnColumn($key)) {
-                continue;
-            }
-            $crit = $values->getCriterion($key);
-            $params[] = [
-                'column' => $crit->getColumnName(),
-                'table' => $crit->getTableAlias(),
-                'value' => $crit->getValue(),
-            ];
+        foreach ($updateColumns as $updateColumn) {
+            $updateColumn->collectParam($params);
         }
 
         return $params;

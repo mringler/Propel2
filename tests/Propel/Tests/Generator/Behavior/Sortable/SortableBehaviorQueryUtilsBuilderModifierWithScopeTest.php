@@ -75,7 +75,7 @@ class SortableBehaviorQueryUtilsBuilderModifierWithScopeTest extends TestCase
     public function testReorder()
     {
         $c = new Criteria();
-        $c->add(SortableTable12TableMap::SCOPE_COL, 1);
+        $c->addFilter(SortableTable12TableMap::SCOPE_COL, 1);
         $objects = SortableTable12Query::doSelectOrderByRank($c);
         $ids = [];
         foreach ($objects as $object) {
@@ -96,7 +96,7 @@ class SortableBehaviorQueryUtilsBuilderModifierWithScopeTest extends TestCase
     public function testDoSelectOrderByRank()
     {
         $c = new Criteria();
-        $c->add(SortableTable12TableMap::SCOPE_COL, 1);
+        $c->addFilter(SortableTable12TableMap::SCOPE_COL, 1);
         $objects = SortableTable12Query::doSelectOrderByRank($c)->getArrayCopy();
         $oldRank = 0;
         while ($object = array_shift($objects)) {
@@ -104,7 +104,7 @@ class SortableBehaviorQueryUtilsBuilderModifierWithScopeTest extends TestCase
             $oldRank = $object->getRank();
         }
         $c = new Criteria();
-        $c->add(SortableTable12TableMap::SCOPE_COL, 1);
+        $c->addFilter(SortableTable12TableMap::SCOPE_COL, 1);
         $objects = SortableTable12Query::doSelectOrderByRank($c, Criteria::DESC)->getArrayCopy();
         $oldRank = 10;
         while ($object = array_shift($objects)) {

@@ -131,8 +131,10 @@ class Collection implements ArrayAccess, IteratorAggregate, Countable, Serializa
         if (isset($this->data[$offset])) {
             return $this->data[$offset];
         }
+        trigger_error('No element at requested index.', E_USER_NOTICE);
+        $v = null; // fix "Only variable references should be returned by reference" error
 
-        return null;
+        return $v;
     }
 
     /**

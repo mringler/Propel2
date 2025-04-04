@@ -8,7 +8,6 @@
 
 namespace Propel\Runtime\Map;
 
-use Propel\Runtime\ActiveQuery\Criteria;
 use Propel\Runtime\Collection\Collection;
 use Propel\Runtime\Collection\ObjectCollection;
 use Propel\Runtime\Exception\LogicException;
@@ -963,37 +962,6 @@ class TableMap
     public function setIdentifierQuoting(bool $identifierQuoting): void
     {
         $this->identifierQuoting = $identifierQuoting;
-    }
-
-    /**
-     * @param \Propel\Runtime\ActiveQuery\Criteria $criteria
-     *
-     * @return array|null null if not covered by only pk
-     */
-    public function extractPrimaryKey(Criteria $criteria): ?array
-    {
-        $pkCols = $this->getPrimaryKeys();
-        if (count($pkCols) !== count($criteria->getColumnFilter())) {
-            return null;
-        }
-
-        $pk = [];
-        foreach ($pkCols as $pkCol) {
-            $fqName = $pkCol->getFullyQualifiedName();
-            $name = $pkCol->getName();
-
-            if ($criteria->hasFilterOnColumn($fqName)) {
-                $value = $criteria->getValue($fqName);
-            } elseif ($criteria->hasFilterOnColumn($name)) {
-                $value = $criteria->getValue($name);
-            } else {
-                return null;
-            }
-
-            $pk[$name] = $value;
-        }
-
-        return $pk;
     }
 
     /**

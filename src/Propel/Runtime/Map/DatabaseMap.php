@@ -142,8 +142,6 @@ class DatabaseMap
     /**
      * Dump table maps. Used during configuration generation.
      *
-     * @psalm-return \Propel\Runtime\Map\TableMapDump
-     *
      * @return array<string, array<string, class-string<\Propel\Runtime\Map\TableMap>>> A dump that can be loaded again with {@link DatabaseMap::loadMapsFromDump()}
      */
     public function dumpMaps(): array
@@ -161,8 +159,6 @@ class DatabaseMap
 
     /**
      * Load internal table maps from dump. Used during Propel initialization.
-     *
-     * @psalm-param \Propel\Runtime\Map\TableMapDump $mapsDump
      *
      * @param array<string, array<string, class-string<\Propel\Runtime\Map\TableMap>>> $mapsDump Table map dump as created by {@link DatabaseMap::dumpMaps()}
      *

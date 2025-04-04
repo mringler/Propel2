@@ -369,10 +369,9 @@ public function getParentOrCreate(?ConnectionInterface \$con = null)
         $cptype = $pkeys[0]->getPhpType();
         $script .= "
 /**
- * Create or Update the parent " . $parentTable->getPhpName() . " object
- * And return its primary key
+ * Create or Update the parent " . $parentTable->getPhpName() . " object.
  *
- * @return " . $cptype . " The primary key of the parent object
+ * @return " . $parentTable->getPhpName() . " The parent object
  */
 public function getSyncParent(?ConnectionInterface \$con = null)
 {

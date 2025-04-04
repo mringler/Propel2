@@ -228,7 +228,7 @@ $paramsDoc
         }
         $script .= "
  *
- * @return \$this The current object, for fluid interface
+ * @return static The current object, for fluid interface
  */
 public function filterByRank(\$rank" . ($useScope ? ", $methodSignature" : '') . ")
 {";
@@ -238,16 +238,13 @@ public function filterByRank(\$rank" . ($useScope ? ", $methodSignature" : '') .
         }
 
         $script .= "
-
-    \$this";
+    return \$this";
         if ($useScope) {
             $script .= "
         ->inList($methodSignature)";
         }
         $script .= "
-        ->addUsingAlias({$this->tableMapClassName}::RANK_COL, \$rank, Criteria::EQUAL);
-
-    return \$this;
+        ->addUsingOperator({$this->tableMapClassName}::RANK_COL, \$rank, Criteria::EQUAL);
 }
 ";
     }
@@ -281,7 +278,7 @@ public function orderByRank(string \$order = Criteria::ASC)
 
             return \$this;
         default:
-            throw new \Propel\Runtime\Exception\PropelException('{$this->queryClassName}::orderBy() only accepts \"asc\" or \"desc\" as argument');
+            throw new PropelException('{$this->queryClassName}::orderBy() only accepts \"asc\" or \"desc\" as argument');
     }
 }
 ";
@@ -473,6 +470,7 @@ public function getMaxRankArray(" . ($useScope ? '$scope, ' : '') . "ConnectionI
     {
         $columnGetter = 'get' . $this->behavior->getColumnForParameter('rank_column')->getPhpName();
         $columnSetter = 'set' . $this->behavior->getColumnForParameter('rank_column')->getPhpName();
+        $objectClass = $this->table->getPhpName();
         $script .= "
 /**
  * Reorder a set of sortable objects based on a list of id/position
@@ -493,6 +491,7 @@ public function reorder(\$order, ?ConnectionInterface \$con = null)
     \$con->transaction(function () use (\$con, \$order) {
         \$ids = array_keys(\$order);
         \$objects = \$this->findPks(\$ids, \$con);
+        /** @var {$objectClass} \$object */
         foreach (\$objects as \$object) {
             \$pk = \$object->getPrimaryKey();
             if (\$object->$columnGetter() != \$order[\$pk]) {
@@ -536,10 +535,10 @@ static public function retrieveByRank(\$rank, " . ($useScope ? '$scope = null, '
     }
 
     \$c = new Criteria;
-    \$c->add({$this->tableMapClassName}::RANK_COL, \$rank);";
+    \$c->addFilter({$this->tableMapClassName}::RANK_COL, \$rank);";
         if ($useScope) {
             $script .= "
-            static::sortableApplyScopeCriteria(\$c, \$scope);";
+    static::sortableApplyScopeCriteria(\$c, \$scope);";
         }
         $script .= "
 
@@ -564,7 +563,7 @@ static public function retrieveByRank(\$rank, " . ($useScope ? '$scope = null, '
  * @param string \$order     sorting order, to be chosen between Criteria::ASC (default) and Criteria::DESC
  * @param ConnectionInterface \$con       optional connection
  *
- * @return array list of sortable objects
+ * @return array|\Propel\Runtime\Collection\Collection list of sortable objects
  */
 static public function doSelectOrderByRank(?Criteria \$criteria = null, \$order = Criteria::ASC, ?ConnectionInterface \$con = null)
 {
@@ -637,7 +636,7 @@ static public function retrieveList(\$scope, \$order = Criteria::ASC, ?Connectio
 static public function countList(\$scope, ?ConnectionInterface \$con = null): int
 {
     \$c = new Criteria();
-    \$c->add({$this->tableMapClassName}::SCOPE_COL, \$scope);
+    \$c->addFilter({$this->tableMapClassName}::SCOPE_COL, \$scope);
 
     return {$this->queryClassName}::create(null, \$c)->count(\$con);
 }
@@ -704,17 +703,16 @@ static public function sortableShiftRank(\$delta, \$first, \$last = null, " . ($
     if (null !== \$last) {
         \$criterion->addAnd(\$whereCriteria->getNewCriterion({$this->tableMapClassName}::RANK_COL, \$last, Criteria::LESS_EQUAL));
     }
-    \$whereCriteria->add(\$criterion);";
+    \$whereCriteria->addFilter(\$criterion);";
         if ($useScope) {
             $script .= "
-            static::sortableApplyScopeCriteria(\$whereCriteria, \$scope);";
+    static::sortableApplyScopeCriteria(\$whereCriteria, \$scope);";
         }
         $script .= "
 
-    \$valuesCriteria = new Criteria({$this->tableMapClassName}::DATABASE_NAME);
-    \$valuesCriteria->add({$this->tableMapClassName}::RANK_COL, array('raw' => {$this->tableMapClassName}::RANK_COL . ' + ?', 'value' => \$delta), Criteria::CUSTOM_EQUAL);
+    \$whereCriteria->setUpdateExpression({$this->tableMapClassName}::RANK_COL, {$this->tableMapClassName}::RANK_COL . ' + ?', \$delta, \\PDO::PARAM_INT);
 
-    \$whereCriteria->doUpdate(\$valuesCriteria, \$con);
+    \$whereCriteria->doUpdate(null, \$con);
     {$this->tableMapClassName}::clearInstancePool();
 }
 ";

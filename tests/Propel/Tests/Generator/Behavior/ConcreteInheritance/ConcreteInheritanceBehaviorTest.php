@@ -143,7 +143,7 @@ EOF;
         $content = new ConcreteContent();
         $content->save();
         $c = new Criteria();
-        $c->add(ConcreteArticleTableMap::COL_ID, $content->getId());
+        $c->setUpdateValue(ConcreteArticleTableMap::COL_ID, $content->getId(), \PDO::PARAM_INT);
         try {
             ConcreteArticleTableMap::doInsert($c);
             $this->assertTrue(true, 'modifyTable() removed autoIncrement from copied Primary keys');
@@ -161,7 +161,7 @@ EOF;
         $content = new ConcreteContent();
         $content->save();
         $c = new Criteria();
-        $c->add(ConcreteQuizzTableMap::COL_ID, $content->getId());
+        $c->setUpdateValue(ConcreteQuizzTableMap::COL_ID, $content->getId(), \PDO::PARAM_INT);
         ConcreteQuizzTableMap::doInsert($c);
     }
 

@@ -67,7 +67,7 @@ class FilterClauseLiteralWithColumns extends AbstractFilterClauseLiteral
             $this->clause = $this->isNotInOperator() ? '1=1' : '1<>1'; // see InColumnFilter::buildFilterClause()
         }
 
-        if ($columnMap->isSetType() && $this->isInOperator()) { // see old ModelCriteria::getCriterionForClause()
+        if ($columnMap->isSetType() && $this->isInOperator()) { // see old ModelCriteria::buildFilterForClause()
             $this->clause = $this->isNotInOperator()
                 ? substr($this->clause, 0, -8) . '& ? = 0'
                 : substr($this->clause, 0, -4) . '& ?';

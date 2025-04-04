@@ -56,15 +56,11 @@ class CriteriaTest extends BookstoreTestBase
         $table = 'myTable';
         $column = 'myColumn';
         $value = 'myValue';
+        $columnIdentifier = "$table.$column";
+        $this->c->setUpdateValue($columnIdentifier, $value, 1);
 
-        // Add the string
-        $this->c->add($table . '.' . $column, $value);
-
-        // Verify that the key exists
-        $this->assertTrue($this->c->containsKey($table . '.' . $column));
-
-        // Verify that what we get out is what we put in
-        $this->assertTrue($this->c->getValue($table . '.' . $column) === $value);
+        $this->assertTrue($this->c->hasUpdateValue($columnIdentifier));
+        $this->assertEquals($value, $this->c->getUpdateValue($columnIdentifier));
     }
 
     /**
@@ -72,20 +68,35 @@ class CriteriaTest extends BookstoreTestBase
      *
      * @return void
      */
-    public function testAddStringWithSchemas()
+    public function testAddUpdateValueWithSchemas()
     {
         $table = 'mySchema.myTable';
         $column = 'myColumn';
         $value = 'myValue';
+        $columnIdentifier = "$table.$column";
+        $this->c->setUpdateValue($columnIdentifier, $value, 1);
 
-        // Add the string
-        $this->c->add($table . '.' . $column, $value);
+        $this->assertTrue($this->c->hasUpdateValue($columnIdentifier));
+        $this->assertEquals($value, $this->c->getUpdateValue($columnIdentifier));
+    }
 
-        // Verify that the key exists
-        $this->assertTrue($this->c->containsKey($table . '.' . $column));
+    /**
+     * Test basic adding of strings for table with explicit schema.
+     *
+     * @return void
+     */
+    public function testAddFilterWithSchemas()
+    {
+        $table = 'mySchema.myTable';
+        $column = 'myColumn';
+        $value = 'myValue';
+        $columnIdentifier = "$table.$column";
+        $this->c->addFilter($columnIdentifier, $value);
+        $columnFilters = $this->c->getColumnFilters();
 
-        // Verify that what we get out is what we put in
-        $this->assertTrue($this->c->getValue($table . '.' . $column) === $value);
+        $this->assertCount(1, $columnFilters);
+        $this->assertEquals($value, reset($columnFilters)->getValue());
+        $this->assertEquals($columnIdentifier, reset($columnFilters)->getLocalColumnName());
     }
 
     /**
@@ -1167,14 +1178,12 @@ class CriteriaTest extends BookstoreTestBase
     public function testClone()
     {
         $c1 = new Criteria();
-        $c1->add('tbl.COL1', 'foo', Criteria::EQUAL);
+        $c1->addFilter('tbl.COL1', 'foo', Criteria::EQUAL);
         $c2 = clone $c1;
         $c2->addAnd('tbl.COL1', 'bar', Criteria::EQUAL);
         $nbCrit = 0;
-        foreach ($c1->keys() as $key) {
-            foreach ($c1->getCriterion($key)->getAttachedCriterion() as $criterion) {
-                $nbCrit++;
-            }
+        foreach ($c1->getColumnFilters() as $filter) {
+            $nbCrit += $filter->count();
         }
         $this->assertEquals(1, $nbCrit, 'cloning a Criteria clones its Criterions');
     }

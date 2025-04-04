@@ -562,7 +562,7 @@ static public function retrieveRoots(?Criteria \$criteria = null, ?ConnectionInt
     if (null === \$criteria) {
         \$criteria = new Criteria($tableMapClassName::DATABASE_NAME);
     }
-    \$criteria->add($objectClassName::LEFT_COL, 1, Criteria::EQUAL);
+    \$criteria->addFilter($objectClassName::LEFT_COL, 1, Criteria::EQUAL);
 
     return $queryClassName::create(null, \$criteria)->find(\$con);
 }
@@ -596,10 +596,10 @@ static public function retrieveRoots(?Criteria \$criteria = null, ?ConnectionInt
 static public function retrieveRoot(" . ($useScope ? '$scope = null, ' : '') . "ConnectionInterface \$con = null)
 {
     \$c = new Criteria($tableMapClassName::DATABASE_NAME);
-    \$c->add($objectClassName::LEFT_COL, 1, Criteria::EQUAL);";
+    \$c->addFilter($objectClassName::LEFT_COL, 1, Criteria::EQUAL);";
         if ($useScope) {
             $script .= "
-    \$c->add($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);";
+    \$c->addFilter($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);";
         }
         $script .= "
 
@@ -641,7 +641,7 @@ static public function retrieveTree(" . ($useScope ? '$scope = null, ' : '') . "
     \$criteria->addAscendingOrderByColumn($objectClassName::LEFT_COL);";
         if ($useScope) {
             $script .= "
-    \$criteria->add($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);";
+    \$criteria->addFilter($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);";
         }
         $script .= "
 
@@ -706,7 +706,7 @@ static public function deleteTree(" . ($useScope ? '$scope = null, ' : '') . "Co
         if ($useScope) {
             $script .= "
     \$c = new Criteria($tableMapClassName::DATABASE_NAME);
-    \$c->add($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);
+    \$c->addFilter($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);
 
     return $tableMapClassName::doDelete(\$c, \$con);";
         } else {
@@ -754,40 +754,38 @@ static public function shiftRLValues(\$delta, \$first, \$last = null" . ($useSco
     }
 
     // Shift left column values
-    \$whereCriteria = new Criteria($tableMapClassName::DATABASE_NAME);
-    \$criterion = \$whereCriteria->getNewCriterion($objectClassName::LEFT_COL, \$first, Criteria::GREATER_EQUAL);
+    \$updateQuery = new Criteria($tableMapClassName::DATABASE_NAME);
+    \$criterion = \$updateQuery->getNewCriterion($objectClassName::LEFT_COL, \$first, Criteria::GREATER_EQUAL);
     if (null !== \$last) {
-        \$criterion->addAnd(\$whereCriteria->getNewCriterion($objectClassName::LEFT_COL, \$last, Criteria::LESS_EQUAL));
+        \$criterion->addAnd(\$updateQuery->getNewCriterion($objectClassName::LEFT_COL, \$last, Criteria::LESS_EQUAL));
     }
-    \$whereCriteria->add(\$criterion);";
+    \$updateQuery->addFilter(\$criterion);";
         if ($useScope) {
             $script .= "
-    \$whereCriteria->add($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);";
+    \$updateQuery->addFilter($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);";
         }
         $script .= "
 
-    \$valuesCriteria = new Criteria($tableMapClassName::DATABASE_NAME);
-    \$valuesCriteria->add($objectClassName::LEFT_COL, array('raw' => $objectClassName::LEFT_COL . ' + ?', 'value' => \$delta), Criteria::CUSTOM_EQUAL);
+    \$updateQuery->setUpdateExpression($objectClassName::LEFT_COL, $objectClassName::LEFT_COL . ' + ?', \$delta, \PDO::PARAM_INT);
 
-    \$whereCriteria->doUpdate(\$valuesCriteria, \$con);
+    \$updateQuery->doUpdate(null, \$con);
 
     // Shift right column values
-    \$whereCriteria = new Criteria($tableMapClassName::DATABASE_NAME);
-    \$criterion = \$whereCriteria->getNewCriterion($objectClassName::RIGHT_COL, \$first, Criteria::GREATER_EQUAL);
+    \$updateQuery = new Criteria($tableMapClassName::DATABASE_NAME);
+    \$criterion = \$updateQuery->getNewCriterion($objectClassName::RIGHT_COL, \$first, Criteria::GREATER_EQUAL);
     if (null !== \$last) {
-        \$criterion->addAnd(\$whereCriteria->getNewCriterion($objectClassName::RIGHT_COL, \$last, Criteria::LESS_EQUAL));
+        \$criterion->addAnd(\$updateQuery->getNewCriterion($objectClassName::RIGHT_COL, \$last, Criteria::LESS_EQUAL));
     }
-    \$whereCriteria->add(\$criterion);";
+    \$updateQuery->addFilter(\$criterion);";
         if ($useScope) {
             $script .= "
-    \$whereCriteria->add($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);";
+    \$updateQuery->addFilter($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);";
         }
         $script .= "
 
-    \$valuesCriteria = new Criteria($tableMapClassName::DATABASE_NAME);
-    \$valuesCriteria->add($objectClassName::RIGHT_COL, array('raw' => $objectClassName::RIGHT_COL . ' + ?', 'value' => \$delta), Criteria::CUSTOM_EQUAL);
+    \$updateQuery->setUpdateExpression($objectClassName::RIGHT_COL, $objectClassName::RIGHT_COL . ' + ?', \$delta, \PDO::PARAM_STR);
 
-    \$whereCriteria->doUpdate(\$valuesCriteria, \$con);
+    \$updateQuery->doUpdate(null, \$con);
 }
 ";
     }
@@ -826,19 +824,18 @@ static public function shiftLevel(\$delta, \$first, \$last" . ($useScope ? ', $s
         \$con = Propel::getServiceContainer()->getWriteConnection($tableMapClassName::DATABASE_NAME);
     }
 
-    \$whereCriteria = new Criteria($tableMapClassName::DATABASE_NAME);
-    \$whereCriteria->add($objectClassName::LEFT_COL, \$first, Criteria::GREATER_EQUAL);
-    \$whereCriteria->add($objectClassName::RIGHT_COL, \$last, Criteria::LESS_EQUAL);";
+    \$updateQuery = new Criteria($tableMapClassName::DATABASE_NAME);
+    \$updateQuery->addFilter($objectClassName::LEFT_COL, \$first, Criteria::GREATER_EQUAL);
+    \$updateQuery->addFilter($objectClassName::RIGHT_COL, \$last, Criteria::LESS_EQUAL);";
         if ($useScope) {
             $script .= "
-    \$whereCriteria->add($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);";
+    \$updateQuery->addFilter($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);";
         }
         $script .= "
 
-    \$valuesCriteria = new Criteria($tableMapClassName::DATABASE_NAME);
-    \$valuesCriteria->add($objectClassName::LEVEL_COL, array('raw' => $objectClassName::LEVEL_COL . ' + ?', 'value' => \$delta), Criteria::CUSTOM_EQUAL);
+    \$updateQuery->setUpdateExpression($objectClassName::LEVEL_COL, $objectClassName::LEVEL_COL . ' + ?', \$delta, \PDO::PARAM_INT);
 
-    \$whereCriteria->doUpdate(\$valuesCriteria, \$con);
+    \$updateQuery->doUpdate(null, \$con);
 }
 ";
     }
@@ -880,7 +877,7 @@ static public function updateLoadedNodes(\$prune = null, ?ConnectionInterface \$
             $pkey = $this->table->getPrimaryKey();
             $col = array_shift($pkey);
             $script .= "
-            \$criteria->add(" . $this->builder->getColumnConstant($col) . ', $keys, Criteria::IN);';
+            \$criteria->addFilter(" . $this->builder->getColumnConstant($col) . ', $keys, Criteria::IN);';
         } else {
             $fields = [];
             foreach ($this->table->getPrimaryKey() as $col) {
@@ -1008,7 +1005,7 @@ static public function fixLevels(" . ($useScope ? '$scope, ' : '') . "?Connectio
     \$c = new Criteria();";
         if ($useScope) {
             $script .= "
-    \$c->add($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);";
+    \$c->addFilter($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);";
         }
         $script .= "
     \$c->addAscendingOrderByColumn($objectClassName::LEFT_COL);
@@ -1092,13 +1089,11 @@ static public function fixLevels(" . ($useScope ? '$scope, ' : '') . "?Connectio
 public static function setNegativeScope(\$scope, ?ConnectionInterface \$con = null): void
 {
     //adjust scope value to \$scope
-    \$whereCriteria = new Criteria($tableMapClassName::DATABASE_NAME);
-    \$whereCriteria->add($objectClassName::LEFT_COL, 0, Criteria::LESS_EQUAL);
+    \$updateQuery = new Criteria($tableMapClassName::DATABASE_NAME);
+    \$updateQuery->addFilter($objectClassName::LEFT_COL, 0, Criteria::LESS_EQUAL);
+    \$updateQuery->setUpdateValue($objectClassName::SCOPE_COL, \$scope);
 
-    \$valuesCriteria = new Criteria($tableMapClassName::DATABASE_NAME);
-    \$valuesCriteria->add($objectClassName::SCOPE_COL, \$scope, Criteria::EQUAL);
-
-    \$whereCriteria->doUpdate(\$valuesCriteria, \$con);
+    \$updateQuery->doUpdate(null, \$con);
 }
 ";
     }

@@ -584,24 +584,24 @@ class SortableBehaviorObjectBuilderModifierWithScopeTest extends TestCase
         $this->assertEquals($t1_2->getRank(), 3);
 
         $t1->moveDown();
-        $this->assertEquals($t1->getRank(), 2);
         $this->assertEquals($t1_1->getRank(), 1);
+        $this->assertEquals($t1->getRank(), 2);
         $this->assertEquals($t1_2->getRank(), 3);
 
         $t1->moveDown();
-        $this->assertEquals($t1->getRank(), 3);
         $this->assertEquals($t1_1->getRank(), 1);
         $this->assertEquals($t1_2->getRank(), 2);
+        $this->assertEquals($t1->getRank(), 3);
 
         $t1_1->moveUp(); //no changes
-        $this->assertEquals($t1->getRank(), 3);
         $this->assertEquals($t1_1->getRank(), 1);
         $this->assertEquals($t1_2->getRank(), 2);
+        $this->assertEquals($t1->getRank(), 3);
 
         $t1_2->moveUp(); //no changes
-        $this->assertEquals($t1->getRank(), 3);
-        $this->assertEquals($t1_1->getRank(), 2);
         $this->assertEquals($t1_2->getRank(), 1);
+        $this->assertEquals($t1_1->getRank(), 2);
+        $this->assertEquals($t1->getRank(), 3);
     }
 
     /**
