@@ -192,8 +192,8 @@ if (method_exists({$ARFQCN}::class, \$name)) {
      */
     public function objectFilter(string &$script): void
     {
-        $p = new PhpParser($script, true);
-        $text = (string)$p->findMethod('toArray');
+        $parser = new PhpParser($script, true);
+        $text = (string)$parser->findMethod('toArray');
         $matches = [];
         preg_match('/(\$result = \[([^;]+)\];)/U', $text, $matches);
         if (!$matches) {
@@ -221,8 +221,8 @@ if (method_exists({$ARFQCN}::class, \$name)) {
 
         $newResult .= "{$indent}\$result = [{$values}\n{$indent}];";
         $text = str_replace($matches[1], ltrim($newResult), $text);
-        $p->replaceMethod('toArray', $text);
-        $script = $p->getCode();
+        $parser->replaceMethod('toArray', $text);
+        $script = $parser->getCode();
     }
 
     /**

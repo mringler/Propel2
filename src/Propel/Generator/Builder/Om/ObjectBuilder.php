@@ -4033,19 +4033,21 @@ $indent};";
      */
     protected function addGetPrimaryKeyMultiPK(string &$script): void
     {
+        $columnTypes = array_map(fn (Column $col) => "{$col->resolveQualifiedType()}|null", $this->getTable()->getPrimaryKey());
+        $pkType = 'array{' . implode(', ', $columnTypes) . '}';
+
         $keyColumns = $this->getTable()->getPrimaryKey();
         $names = array_values(array_map(fn ($column) => $column->getPhpName(), $keyColumns));
         $setters = array_map(fn ($index, $name) => "\$pks[{$index}] = \$this->get{$name}();", array_keys($names), $names);
         $settersBlock = implode("\n        ", $setters);
-
         $script .= "
     /**
      * Returns the composite primary key for this object.
      * The array elements will be in same order as specified in XML.
      *
-     * @return array
+     * @return $pkType
      */
-    public function getPrimaryKey()
+    public function getPrimaryKey(): array
     {
         \$pks = [];
         {$settersBlock}

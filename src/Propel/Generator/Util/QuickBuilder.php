@@ -73,7 +73,7 @@ class QuickBuilder
     /**
      * @var array
      */
-    protected $classTargets = ['tablemap', 'object', 'query', 'collection', 'objectstub', 'querystub'];
+    protected $classTargets = ['tablemap', 'object', 'objectstub', 'collection', 'query', 'querystub'];
 
     /**
      * Identifier quoting for reversed database.
@@ -444,7 +444,7 @@ class QuickBuilder
      */
     public function buildClasses(?array $classTargets = null): void
     {
-        $classes = $classTargets ?? ['tablemap', 'object', 'query', 'collection', 'objectstub', 'querystub'];
+        $classes = $classTargets ?? ['tablemap', 'object', 'objectstub', 'collection', 'query', 'querystub'];
 
         $includes = $this->isVfs() ? $this->buildClassesToVirtual($classes, $this->getDatabase()->getTables())
             : $this->buildClassesToPhysical($classes, $this->getDatabase()->getTables());
@@ -676,7 +676,7 @@ class QuickBuilder
         $includes = [];
 
         foreach ($tables as $table) {
-            if (5 > count($allCodeName)) {
+            if (count($allCodeName) < 5) {
                 $allCodeName[] = $table->getPhpName();
             }
             $allCode .= $this->getClassesForTable($table, $classes);

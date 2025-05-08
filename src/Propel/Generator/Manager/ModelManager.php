@@ -92,25 +92,23 @@ class ModelManager extends AbstractManager
 
                     // If table has enumerated children (uses inheritance) then create the empty child stub classes if they don't already exist.
                     $col = $table->getChildrenColumn();
-                    if ($col) {
-                        if ($col->isEnumeratedClasses()) {
-                            foreach ($col->getChildren() as $child) {
-                                foreach (['queryinheritance'] as $target) {
-                                    if (!$child->getAncestor() && $child->getClassName() === $table->getPhpName()) {
-                                        continue;
-                                    }
-                                    /** @var \Propel\Generator\Builder\Om\QueryInheritanceBuilder $builder */
-                                    $builder = $generatorConfig->getConfiguredBuilder($table, $target);
-                                    $builder->setChild($child);
-                                    $nbWrittenFiles += $this->doBuild($builder);
+                    if ($col && $col->isEnumeratedClasses()) {
+                        foreach ($col->getChildren() as $child) {
+                            foreach (['queryinheritance'] as $target) {
+                                if (!$child->getAncestor() && $child->getClassName() === $table->getPhpName()) {
+                                    continue;
                                 }
+                                /** @var \Propel\Generator\Builder\Om\QueryInheritanceBuilder $builder */
+                                $builder = $generatorConfig->getConfiguredBuilder($table, $target);
+                                $builder->setChild($child);
+                                $nbWrittenFiles += $this->doBuild($builder);
+                            }
 
-                                foreach (['objectmultiextend', 'queryinheritancestub'] as $target) {
-                                    /** @var \Propel\Generator\Builder\Om\MultiExtendObjectBuilder $builder */
-                                    $builder = $generatorConfig->getConfiguredBuilder($table, $target);
-                                    $builder->setChild($child);
-                                    $nbWrittenFiles += $this->doBuild($builder, false);
-                                }
+                            foreach (['objectmultiextend', 'queryinheritancestub'] as $target) {
+                                /** @var \Propel\Generator\Builder\Om\MultiExtendObjectBuilder $builder */
+                                $builder = $generatorConfig->getConfiguredBuilder($table, $target);
+                                $builder->setChild($child);
+                                $nbWrittenFiles += $this->doBuild($builder, false);
                             }
                         }
                     }

@@ -564,9 +564,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
     #[\Override]
     protected function addClassClose(string &$script): void
     {
-        $script .= "
-}
-";
+        $script .= "}\n";
         $this->applyBehaviorModifier('tableMapFilter', $script, '');
     }
 
@@ -821,7 +819,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
     public function getInstancePoolKeySnippet($pkphp): string
     {
         $pkphp = (array)$pkphp; // make it an array if it is not.
-        $format = '%1$s === null || is_scalar(%1$s) || is_callable([%1$s, \'__toString\']) ? (string) %1$s : %1$s';
+        $format = '%1$s === null || is_scalar(%1$s) || is_callable([%1$s, \'__toString\']) ? (string)%1$s : %1$s';
         $statements = array_map(fn ($keyLiteral) => sprintf($format, $keyLiteral), $pkphp);
 
         return (count($statements) === 1) ? $statements[0] : 'serialize([' . implode(', ', $statements) . '])';
@@ -1005,8 +1003,8 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
         $script .= "
     /**
      * Retrieves the primary key from the DB resultset row
-     * For tables with a single-column primary key, that simple pkey value will be returned.  For tables with
-     * a multi-column primary key, an array of the primary key columns will be returned.
+     * For tables with a single-column primary key, that simple pkey value will be returned. 
+     * For tables with a multi-column primary key, an array of the primary key columns will be returned.
      *
      * @param array \$row Resultset row.
      * @param int \$offset The 0-based offset for reading from the resultset row.
@@ -1048,20 +1046,28 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
         } else {
             $pk = "''";
             foreach ($table->getColumns() as $col) {
-                if (!$col->isLazyLoad()) {
-                    if ($col->isPrimaryKey()) {
-                        $pk = ($col->isPhpObjectType() ? 'new ' . $col->getPhpType() . '(' : '(' . $col->getPhpType() . ') ') . "\$row[
-            \$indexType == TableMap::TYPE_NUM
-                ? $n + \$offset
-                : self::translateFieldName('{$col->getPhpName()}', TableMap::TYPE_PHPNAME, \$indexType)
-        ]" . ($col->isPhpObjectType() ? ')' : '');
-                    }
+                if ($col->isLazyLoad() || !$col->isPrimaryKey()) {
                     $n++;
+
+                    continue;
                 }
+
+                $isObject = $col->isPhpObjectType();
+                $phpType = $col->getPhpType();
+                $columnName = $col->getPhpName();
+                $varName = '$' . lcfirst($columnName) . 'Ix';
+                $script .= "
+        $varName = \$indexType === TableMap::TYPE_NUM
+            ? $n + \$offset
+            : self::translateFieldName('$columnName', TableMap::TYPE_PHPNAME, \$indexType);
+                ";
+                $rowAccess = "\$row[$varName]";
+                $pk = $isObject ? "new $phpType ($rowAccess)" : "($phpType)$rowAccess";
+                $n++;
             }
 
             $script .= "
-        return " . $pk . ';';
+        return $pk;";
         }
 
         $script .= "
@@ -1238,9 +1244,6 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
      *                           One of the class type constants TableMap::TYPE_PHPNAME, TableMap::TYPE_CAMELNAME
      *                           TableMap::TYPE_COLNAME, TableMap::TYPE_FIELDNAME, TableMap::TYPE_NUM.
      *
-     * @throws \Propel\Runtime\Exception\PropelException Any exceptions caught during processing will be
-     *                         rethrown wrapped into a PropelException.
-     *
      * @return array (" . $this->registerOwnClassIdentifier() . " object, last column rank)
      */
     public static function populateObject(array \$row, int \$offset = 0, string \$indexType = TableMap::TYPE_NUM): array
@@ -1293,10 +1296,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
      * The returned array will contain objects of the default type or
      * objects that inherit from the default.
      *
-     * @param DataFetcherInterface \$dataFetcher
-     *
-     * @throws \Propel\Runtime\Exception\PropelException Any exceptions caught during processing will be
-     *                         rethrown wrapped into a PropelException.
+     * @param \Propel\Runtime\DataFetcher\DataFetcherInterface \$dataFetcher
      *
      * @return array<object>
      */
@@ -1326,15 +1326,14 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
                 // class must be set each time from the record row
                 \$cls = static::getOMClass(\$row, 0);
                 \$cls = preg_replace('#\.#', '\\\\', \$cls);
-                /** @var {$this->registerOwnClassIdentifier()} \$obj */
+                /** @var {$this->tableNames->useObjectStubClassName(false)} \$obj */
                 " . $this->buildObjectInstanceCreationCode('$obj', '$cls') . "
                 \$obj->hydrate(\$row);
                 \$results[] = \$obj;
                 {$this->getTableMapClassName()}::addInstanceToPool(\$obj, \$key);";
         } else {
             $script .= "
-                /** @var {$this->registerOwnClassIdentifier()} \$obj */
-                " . $this->buildObjectInstanceCreationCode('$obj', '$cls') . "
+                \$obj = new {$this->tableNames->useObjectStubClassName()}();
                 \$obj->hydrate(\$row);
                 \$results[] = \$obj;
                 {$this->getTableMapClassName()}::addInstanceToPool(\$obj, \$key);";
@@ -1344,7 +1343,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
         }
 
         return \$results;
-    }";
+    }\n";
     }
 
     /**
@@ -1367,8 +1366,6 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
      * @param \Propel\Runtime\ActiveQuery\Criteria \$criteria Object containing the columns to add.
      * @param string|null \$alias Optional table alias
      *
-     * @throws \Propel\Runtime\Exception\PropelException Any exceptions caught during processing will be
-     *                         rethrown wrapped into a PropelException.
      * @return void
      */
     public static function addSelectColumns(Criteria \$criteria, ?string \$alias = null): void
@@ -1416,7 +1413,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
      */
     public static function removeSelectColumns(Criteria \$criteria, ?string \$alias = null): void
     {
-        if (null === \$alias) {";
+        if (\$alias === null) {";
         foreach ($this->getTable()->getColumns() as $col) {
             if (!$col->isLazyLoad()) {
                 $script .= "
@@ -1449,19 +1446,18 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
      */
     protected function addGetTableMap(string &$script): void
     {
+        $tableMapClass = $this->getTableMapClass();
+
         $script .= "
     /**
      * Returns the TableMap related to this object.
      * This method is not needed for general use but a specific application could have a need.
      *
-     * @throws \Propel\Runtime\Exception\PropelException Any exceptions caught during processing will be
-     *                         rethrown wrapped into a PropelException.
-     *
-     * @return TableMap
+     * @return static
      */
     public static function getTableMap(): TableMap
     {
-        return Propel::getServiceContainer()->getDatabaseMap(" . $this->getTableMapClass() . '::DATABASE_NAME)->getTable(' . $this->getTableMapClass() . "::TABLE_NAME);
+        return Propel::getServiceContainer()->getDatabaseMap({$tableMapClass}::DATABASE_NAME)->getTable({$tableMapClass}::TABLE_NAME);
     }
 ";
     }
@@ -1480,7 +1476,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
     /**
      * Deletes all rows from the " . $table->getName() . " table.
      *
-     * @param \Propel\Runtime\Connection\ConnectionInterface \$con the connection to use
+     * @param \Propel\Runtime\Connection\ConnectionInterface|null \$con the connection to use
      *
      * @return int The number of affected rows (if supported by underlying database driver).
      */
@@ -1511,19 +1507,19 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
      *
      * @param mixed \$values Criteria or " . $this->registerOwnClassIdentifier() . " object or primary key or array of primary keys
      *              which is used to create the DELETE statement
-     * @param \Propel\Runtime\Connection\ConnectionInterface \$con the connection to use
+     * @param \Propel\Runtime\Connection\ConnectionInterface|null \$con the connection to use
      *
      * @throws \Propel\Runtime\Exception\PropelException Any exceptions caught during processing will be
      *                         rethrown wrapped into a PropelException.
      *
-     * @return int The number of affected rows (if supported by underlying database driver).  This includes CASCADE-related rows
+     * @return int The number of affected rows (if supported by underlying database driver). This includes CASCADE-related rows
      *                         if supported by native driver or if emulated using Propel.
      */
-     public static function doDelete(\$values, ?ConnectionInterface \$con = null): int
-     {
+    public static function doDelete(\$values, ?ConnectionInterface \$con = null): int
+    {
         trigger_deprecation('Propel', '2.0', 'TableMap::doDelete() should not be used anymore, delete via model or {$this->getQueryClassName()}');
 
-        if (null === \$con) {
+        if (\$con === null) {
             \$con = Propel::getServiceContainer()->getWriteConnection(" . $this->getTableMapClass() . "::DATABASE_NAME);
         }
 
@@ -1592,7 +1588,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
         if (\$values instanceof Criteria) {
             {$this->getTableMapClassName()}::clearInstancePool();
         } elseif (!is_object(\$values)) { // it's a primary key, or an array of pks
-            foreach ((array) \$values as \$singleval) {
+            foreach ((array)\$values as \$singleval) {
                 {$this->getTableMapClassName()}::removeInstanceFromPool(\$singleval);
             }
         }
@@ -1613,14 +1609,15 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
     {
         $table = $this->getTable();
         $tableMapClass = $this->getTableMapClass();
-        $stubObjectName = $this->registerOwnClassIdentifier();
+        $stubObjectName = $this->tableNames->useObjectStubClassName();
+        $stubObjectNameFq = $this->tableNames->useObjectStubClassName(false);
 
         $script .= "
     /**
      * Performs an INSERT on the database, given a $stubObjectName or Criteria object.
      *
-     * @param \Propel\Runtime\ActiveQuery\Criteria|$stubObjectName \$criteria Criteria or $stubObjectName object containing data that is used to create the INSERT statement.
-     * @param \Propel\Runtime\Connection\ConnectionInterface \$con the ConnectionInterface connection to use
+     * @param \Propel\Runtime\ActiveQuery\Criteria|$stubObjectNameFq \$criteria
+     * @param \Propel\Runtime\Connection\ConnectionInterface|null \$con
      *
      * @throws \Propel\Runtime\Exception\PropelException Any exceptions caught during processing will be
      *                         rethrown wrapped into a PropelException.
@@ -1629,7 +1626,7 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
      */
     public static function doInsert(\$criteria, ?ConnectionInterface \$con = null)
     {
-        if (null === \$con) {
+        if (\$con === null) {
             \$con = Propel::getServiceContainer()->getWriteConnection(" . $tableMapClass . "::DATABASE_NAME);
         }
 
@@ -1648,9 +1645,10 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
                 && $table->getIdMethod() !== 'none'
                 && !$table->isAllowPkInsert()
             ) {
+                $columnConstant = $this->getColumnConstant($col);
                 $script .= "
-        if (\$criteria->hasUpdateValue(" . $this->getColumnConstant($col) . ") ) {
-            throw new PropelException('Cannot insert a value for auto-increment primary key ('." . $this->getColumnConstant($col) . ".')');
+        if (\$criteria->hasUpdateValue($columnConstant)) {
+            throw new PropelException('Cannot insert a value for auto-increment primary key ($columnConstant)');
         }
 ";
                 if (!$this->getPlatform()->supportsInsertNullPk()) {
@@ -1676,7 +1674,6 @@ class " . $this->getUnqualifiedClassName() . " extends TableMap
         }
 
         $script .= "
-
         // Set the correct dbName
         \$query = " . $this->getQueryClassName() . "::create()->mergeWith(\$criteria);
 

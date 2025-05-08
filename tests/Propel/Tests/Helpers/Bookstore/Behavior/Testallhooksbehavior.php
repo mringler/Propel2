@@ -216,12 +216,29 @@ class TestAllHooksQueryBuilderModifier
 {
     public function staticAttributes($builder)
     {
-        return 'static public $customStaticAttribute = 1;public static $staticAttributeBuilder = "' . get_class($builder) . '";';
+        return '/**
+ * @var int
+ */
+public static $customStaticAttribute = 1;
+
+/**
+ * @var string
+ */
+public static $staticAttributeBuilder = "' . get_class($builder) . '";
+        ';
     }
 
     public function staticMethods($builder)
     {
-        return 'static public function hello() { return "' . get_class($builder) . '"; }';
+        $builderClass = get_class($builder);
+        return "/**
+ * @return string
+ */
+public static function hello()
+{
+    return '$builderClass';
+}
+";
     }
 
     /**
@@ -229,7 +246,10 @@ class TestAllHooksQueryBuilderModifier
      */
     public function queryFilter(&$string, $builder): void
     {
-        $string .= 'class testQueryFilter { const FOO = "' . get_class($builder) . '"; }';
+        $builderClass = get_class($builder);
+        $string .= "
+// queryFilter hook
+";
     }
 
     public function preSelectQuery($builder)

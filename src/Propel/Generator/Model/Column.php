@@ -1751,4 +1751,12 @@ class Column extends MappingModel
 
         return $contentAttribute && strtoupper($contentAttribute) === strtoupper($content);
     }
+
+    /**
+     * @return string
+     */
+    public function resolveQualifiedType(): string
+    {
+        return $this->typeHint ?: ($this->getPhpType() ?: 'mixed');
+    }
 }

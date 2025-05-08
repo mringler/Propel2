@@ -105,6 +105,6 @@ SCHEMA;
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('The Stuff object has no primary key');
 
-        StuffQuery::create()->filterByPrimaryKeys(42);
+        StuffQuery::create()->filterByPrimaryKeys([42]);
     }
 }

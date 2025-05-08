@@ -15,6 +15,7 @@ use Propel\Generator\Builder\Om\AbstractObjectBuilder;
 use Propel\Generator\Builder\Om\AbstractOMBuilder;
 use Propel\Generator\Builder\Om\MultiExtendObjectBuilder;
 use Propel\Generator\Builder\Om\ObjectBuilder;
+use Propel\Generator\Builder\Om\ObjectCollectionBuilder;
 use Propel\Generator\Builder\Om\QueryBuilder;
 use Propel\Generator\Builder\Om\TableMapBuilder;
 use Propel\Generator\Builder\Util\NameProducer;
@@ -577,6 +578,18 @@ abstract class DataModelBuilder
     public function getNewTableMapBuilder(Table $table): TableMapBuilder
     {
         return $this->builderFactory->createTableMapBuilder($table);
+    }
+
+    /**
+     * Returns new stub Query Inheritance builder class for this table.
+     *
+     * @param \Propel\Generator\Model\Table $table
+     *
+     * @return \Propel\Generator\Builder\Om\ObjectCollectionBuilder
+     */
+    public function getNewObjectCollectionBuilder(Table $table): ObjectCollectionBuilder
+    {
+        return $this->builderFactory->createObjectCollectionBuilder($table);
     }
 
     /**

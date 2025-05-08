@@ -55,15 +55,10 @@ class QueryBehaviorTest extends BookstoreTestBase
      */
     public function testQueryFilter()
     {
-        class_exists('Propel\Tests\Bookstore\Behavior\Table3Query'); //trigger autoload
-        $this->assertTrue(
-            class_exists('Propel\Tests\Bookstore\Behavior\Base\testQueryFilter'),
-            'queryFilter hook allows complete manipulation of the generated script'
-        );
-        $this->assertEquals(
-            'Propel\Generator\Builder\Om\QueryBuilder',
-            testQueryFilter::FOO,
-            'queryFilter hook is called with the query builder as parameter'
-        );
+        // probably better to test this with a stub
+        $reflector = new \ReflectionClass('\Propel\Tests\Bookstore\Behavior\Base\Table3Query');
+        $classFile = $reflector->getFileName();
+        $content = file_get_contents($classFile);
+        $this->assertStringContainsString('// queryFilter hook', $content);
     }
 }

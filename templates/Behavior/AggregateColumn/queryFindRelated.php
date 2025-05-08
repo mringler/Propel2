@@ -3,6 +3,8 @@
  * Finds the related <?=$foreignTable->getPhpName()?> objects and keep them for later
  *
  * @param \Propel\Runtime\Connection\ConnectionInterface $con A connection object
+ *
+ * @return void
  */
 protected function findRelated<?=$relationName.$aggregateName?>s($con)
 {
@@ -13,8 +15,9 @@ protected function findRelated<?=$relationName.$aggregateName?>s($con)
     } else {
         $alias = '';
     }
+
     $this-><?=$variableName?>s = <?=$foreignQueryName?>::create()
         ->join<?=$refRelationName?>($alias)
         ->mergeWith($criteria)
-        ->find($con);
+        ->findObjects($con);
 }

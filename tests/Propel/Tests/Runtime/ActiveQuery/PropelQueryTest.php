@@ -213,7 +213,7 @@ class PropelQueryTest extends BookstoreTestBase
         return [
             ['find', null],
             ['findByTitle', 'le title'],
-            ['findPks', 42]
+            ['findPks', [42]]
         ];
     }
 }

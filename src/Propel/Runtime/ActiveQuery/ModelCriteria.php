@@ -120,7 +120,7 @@ class ModelCriteria extends BaseModelCriteria
      *
      * Marks the query to be
      *
-     * @see ModelCriteria::useAbstractInnerQueryCriterion()
+     * @see ModelCriteria::useInnerQueryFilter()
      * @see ModelCriteria::endUse()
      *
      * @var bool
@@ -798,11 +798,9 @@ class ModelCriteria extends BaseModelCriteria
         /** @var \Propel\Runtime\ActiveQuery\ModelJoin $modelJoin */
         $modelJoin = $this->joins[$relationName];
         $className = $modelJoin->getTableMap() ? (string)$modelJoin->getTableMap()->getClassName() : '';
-        if ($secondaryCriteriaClass === null) {
-            $secondaryCriteria = PropelQuery::from($className);
-        } else {
-            $secondaryCriteria = new $secondaryCriteriaClass();
-        }
+        $secondaryCriteria = $secondaryCriteriaClass
+            ? new $secondaryCriteriaClass()
+            : PropelQuery::from($className);
 
         if ($className !== $relationName) {
             $modelName = $modelJoin->getRelationMap() ? $modelJoin->getRelationMap()->getName() : '';
@@ -844,9 +842,9 @@ class ModelCriteria extends BaseModelCriteria
     }
 
     /**
-     * Adds and returns an internal query to be used in an EXISTS-clause.
+     * Adds and returns an internal query to be used in an EXISTS or IN-clause.
      *
-     * @param class-string<\Propel\Runtime\ActiveQuery\FilterExpression\AbstractInnerQueryFilter> $abstractInnerQueryCriterionClass
+     * @param class-string<\Propel\Runtime\ActiveQuery\FilterExpression\AbstractInnerQueryFilter> $innerQueryFilterClass
      * @param string $relationName name of the relation
      * @param string|null $modelAlias sets an alias for the nested query
      * @param class-string<\Propel\Runtime\ActiveQuery\ModelCriteria>|null $queryClass allows to use a custom query class for the exists query, like ExtendedBookQuery::class
@@ -854,8 +852,8 @@ class ModelCriteria extends BaseModelCriteria
      *
      * @return \Propel\Runtime\ActiveQuery\ModelCriteria
      */
-    protected function useAbstractInnerQueryCriterion(
-        string $abstractInnerQueryCriterionClass,
+    protected function useInnerQueryFilter(
+        string $innerQueryFilterClass,
         string $relationName,
         ?string $modelAlias = null,
         ?string $queryClass = null,
@@ -872,7 +870,7 @@ class ModelCriteria extends BaseModelCriteria
             $innerQuery->setModelAlias($modelAlias, true);
         }
 
-        $criterion = $abstractInnerQueryCriterionClass::createForRelation($this, $relationMap, $operatorDeclaration, $innerQuery);
+        $criterion = $innerQueryFilterClass::createForRelation($this, $relationMap, $operatorDeclaration, $innerQuery);
         $this->addUsingOperator($criterion);
 
         return $innerQuery;
@@ -881,7 +879,7 @@ class ModelCriteria extends BaseModelCriteria
     /**
      * Adds and returns an internal query to be used in an EXISTS-clause.
      *
-     * @phpstan-param \Propel\Runtime\ActiveQuery\Criterion\ExistsQueryCriterion::TYPE_* $type
+     * @phpstan-param \Propel\Runtime\ActiveQuery\FilterExpression\ExistsFilter::TYPE_* $type
      *
      * @param string $relationName name of the relation
      * @param string|null $modelAlias sets an alias for the nested query
@@ -896,7 +894,7 @@ class ModelCriteria extends BaseModelCriteria
         ?string $queryClass = null,
         string $type = ExistsFilter::TYPE_EXISTS
     ) {
-        return $this->useAbstractInnerQueryCriterion(ExistsFilter::class, $relationName, $modelAlias, $queryClass, $type);
+        return $this->useInnerQueryFilter(ExistsFilter::class, $relationName, $modelAlias, $queryClass, $type);
     }
 
     /**
@@ -933,7 +931,7 @@ class ModelCriteria extends BaseModelCriteria
         ?string $queryClass = null,
         string $type = Criteria::IN
     ) {
-        return $this->useAbstractInnerQueryCriterion(ColumnToQueryFilter::class, $relationName, $modelAlias, $queryClass, $type);
+        return $this->useInnerQueryFilter(ColumnToQueryFilter::class, $relationName, $modelAlias, $queryClass, $type);
     }
 
     /**

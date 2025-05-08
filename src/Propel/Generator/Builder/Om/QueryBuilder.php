@@ -8,14 +8,15 @@
 
 namespace Propel\Generator\Builder\Om;
 
+use LogicException;
+use Propel\Generator\Builder\Util\EntityObjectClassNames;
 use Propel\Generator\Builder\Util\PropelTemplate;
 use Propel\Generator\Model\Column;
 use Propel\Generator\Model\CrossRelation;
 use Propel\Generator\Model\ForeignKey;
 use Propel\Generator\Model\PropelTypes;
 use Propel\Generator\Model\Table;
-use Propel\Runtime\ActiveQuery\Criteria;
-use Propel\Runtime\ActiveQuery\Criterion\ExistsQueryCriterion;
+use Propel\Runtime\ActiveQuery\FilterExpression\ExistsFilter;
 
 /**
  * Generates a base Query class for user object model (OM).
@@ -27,6 +28,20 @@ use Propel\Runtime\ActiveQuery\Criterion\ExistsQueryCriterion;
  */
 class QueryBuilder extends AbstractOMBuilder
 {
+    /**
+     * @var \Propel\Generator\Builder\Util\EntityObjectClassNames
+     */
+    protected EntityObjectClassNames $tableNames;
+
+    /**
+     * @param \Propel\Generator\Model\Table $table
+     */
+    public function __construct(Table $table)
+    {
+        parent::__construct($table);
+        $this->tableNames = $this->referencedClasses->useEntityObjectClassNames($table);
+    }
+
     /**
      * Returns the package for the [base] object classes.
      *
@@ -65,9 +80,26 @@ class QueryBuilder extends AbstractOMBuilder
     /**
      * Returns parent class name that extends TableQuery Object if is set this class must extends ModelCriteria for be compatible
      *
+     * @param bool $fqcn
+     *
      * @return string
      */
-    public function getParentClass(): string
+    public function getParentClass(bool $fqcn = false): string
+    {
+        $parentClass = $this->resolveParentClass();
+        if ($fqcn) {
+            return $parentClass;
+        }
+
+        $slashPos = strrpos($parentClass, '\\');
+
+        return $slashPos === false ? $parentClass : substr($parentClass, $slashPos + 1);
+    }
+
+    /**
+     * @return string
+     */
+    protected function resolveParentClass(): string
     {
         $parentClass = $this->getBehaviorContent('parentClass');
         if ($parentClass) {
@@ -79,7 +111,7 @@ class QueryBuilder extends AbstractOMBuilder
             return $baseQueryClass;
         }
 
-        return 'TypedModelCriteria';
+        return '\Propel\Runtime\ActiveQuery\TypedModelCriteria';
     }
 
     /**
@@ -98,9 +130,10 @@ class QueryBuilder extends AbstractOMBuilder
         $script .= $this->renderTemplate('baseQueryClassHeader.php', [
             'tableName' => $table->getName(),
             'tableDesc' => $table->getDescription(),
-            'queryClass' => $this->getQueryClassName(),
-            'modelClass' => $this->getObjectClassName(),
+            'queryClass' => $this->tableNames->useQueryStubClassName(false),
+            'modelClass' => $this->tableNames->useObjectStubClassName(false),
             'parentClass' => $this->getParentClass(),
+            'parentClassFq' => $this->getParentClass(true),
             'entityNotFoundExceptionClass' => $this->getEntityNotFoundExceptionClass(),
             'unqualifiedClassName' => $this->getUnqualifiedClassName(),
 
@@ -165,7 +198,6 @@ class QueryBuilder extends AbstractOMBuilder
         // namespaces
         $this->declareClasses(
             '\Propel\Runtime\Propel',
-            '\Propel\Runtime\ActiveQuery\ModelCriteria',
             '\Propel\Runtime\ActiveQuery\TypedModelCriteria',
             '\Propel\Runtime\ActiveQuery\Criteria',
             '\Propel\Runtime\ActiveQuery\FilerExpression\FilterFactory',
@@ -243,7 +275,12 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addEntityNotFoundExceptionClass(string &$script): void
     {
-        $script .= "    protected \$entityNotFoundExceptionClass = '" . addslashes($this->getEntityNotFoundExceptionClass()) . "';\n";
+        $exeptionClassName = addslashes($this->getEntityNotFoundExceptionClass());
+        $script .= "
+    /**
+     * @var string
+     */
+    protected \$entityNotFoundExceptionClass = '$exeptionClassName';\n";
     }
 
     /**
@@ -323,9 +360,7 @@ class QueryBuilder extends AbstractOMBuilder
     #[\Override]
     protected function addClassClose(string &$script): void
     {
-        $script .= "
-}
-";
+        $script .= '}';
         $this->applyBehaviorModifier('queryFilter', $script, '');
     }
 
@@ -340,71 +375,25 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addConstructor(string &$script): void
     {
-        $this->addConstructorComment($script);
-        $this->addConstructorOpen($script);
-        $this->addConstructorBody($script);
-        $this->addConstructorClose($script);
-    }
+        $className = $this->getUnqualifiedClassName();
+        $dbName = $this->getTable()->getDatabase()->getName();
+        $modelName = addslashes($this->tableNames->useObjectStubClassName(false));
 
-    /**
-     * Adds the comment for the constructor
-     *
-     * @param string $script The script will be modified in this method.
-     *
-     * @return void
-     */
-    protected function addConstructorComment(string &$script): void
-    {
         $script .= "
     /**
-     * Initializes internal state of " . $this->getClassName() . " object.
+     * Initializes internal state of $className object.
      *
      * @param string \$dbName The database name
      * @param string \$modelName The phpName of a model, e.g. 'Book'
-     * @param string \$modelAlias The alias for the model in this query, e.g. 'b'
-     */";
-    }
-
-    /**
-     * Adds the function declaration for the constructor
-     *
-     * @param string $script The script will be modified in this method.
-     *
-     * @return void
+     * @param string|null \$modelAlias The alias for the model in this query, e.g. 'b'
      */
-    protected function addConstructorOpen(string &$script): void
-    {
-        $table = $this->getTable();
-        $script .= "
-    public function __construct(\$dbName = '" . $table->getDatabase()->getName() . "', \$modelName = '" . addslashes($this->getNewStubObjectBuilder($table)->getFullyQualifiedClassName()) . "', \$modelAlias = null)
-    {";
-    }
-
-    /**
-     * Adds the function body for the constructor
-     *
-     * @param string $script The script will be modified in this method.
-     *
-     * @return void
-     */
-    protected function addConstructorBody(string &$script): void
-    {
-        $script .= "
-        parent::__construct(\$dbName, \$modelName, \$modelAlias);";
-    }
-
-    /**
-     * Adds the function close for the constructor
-     *
-     * @param string $script The script will be modified in this method.
-     *
-     * @return void
-     */
-    protected function addConstructorClose(string &$script): void
-    {
-        $script .= "
-    }
-";
+    public function __construct(
+        string \$dbName = '$dbName',
+        string \$modelName = '$modelName',
+        ?string \$modelAlias = null
+    ) {
+        parent::__construct(\$dbName, \$modelName, \$modelAlias);
+    }\n";
     }
 
     /**
@@ -416,62 +405,24 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addFactory(string &$script): void
     {
-        $this->addFactoryComment($script);
-        $this->addFactoryOpen($script);
-        $this->addFactoryBody($script);
-        $this->addFactoryClose($script);
-    }
+        $stubQueryClassName = $this->tableNames->useQueryStubClassName();
+        $stubQueryClassNameFq = $this->tableNames->useQueryStubClassName(false);
 
-    /**
-     * Adds the comment for the factory
-     *
-     * @param string $script The script will be modified in this method.
-     *
-     * @return void
-     */
-    protected function addFactoryComment(string &$script): void
-    {
-        $classname = $this->getClassNameFromBuilder($this->getNewStubQueryBuilder($this->getTable()));
         $script .= "
     /**
-     * Returns a new " . $classname . " object.
+     * Returns a new $stubQueryClassName object. XS
      *
-     * @param string \$modelAlias The alias of a model in the query
-     * @param \Propel\Runtime\ActiveQuery\Criteria \$criteria Optional Criteria to build the query from
+     * @param string|null \$modelAlias The alias of a model in the query
+     * @param \Propel\Runtime\ActiveQuery\Criteria|null \$criteria Optional Criteria to build the query from
      *
-     * @return " . $classname . "<null>
-     */";
-    }
-
-    /**
-     * Adds the function declaration for the factory
-     *
-     * @param string $script The script will be modified in this method.
-     *
-     * @return void
+     * @return $stubQueryClassNameFq<null>
      */
-    protected function addFactoryOpen(string &$script): void
-    {
-        $script .= "
     public static function create(?string \$modelAlias = null, ?Criteria \$criteria = null): Criteria
-    {";
-    }
-
-    /**
-     * Adds the function body for the factory
-     *
-     * @param string $script The script will be modified in this method.
-     *
-     * @return void
-     */
-    protected function addFactoryBody(string &$script): void
     {
-        $classname = $this->getClassNameFromBuilder($this->getNewStubQueryBuilder($this->getTable()));
-        $script .= "
-        if (\$criteria instanceof " . $classname . ") {
+        if (\$criteria instanceof $stubQueryClassName) {
             return \$criteria;
         }
-        \$query = new " . $classname . "();
+        \$query = new $stubQueryClassName();
         if (\$modelAlias !== null) {
             \$query->setModelAlias(\$modelAlias);
         }
@@ -479,21 +430,8 @@ class QueryBuilder extends AbstractOMBuilder
             \$query->mergeWith(\$criteria);
         }
 
-        return \$query;";
-    }
-
-    /**
-     * Adds the function close for the factory
-     *
-     * @param string $script The script will be modified in this method.
-     *
-     * @return void
-     */
-    protected function addFactoryClose(string &$script): void
-    {
-        $script .= "
-    }
-";
+        return \$query;
+    }\n";
     }
 
     /**
@@ -503,23 +441,29 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addFindPk(string &$script): void
     {
-        $class = $this->getObjectClassName();
+        $objectClassNameFq = $this->tableNames->useObjectBaseClassName(false);
         $tableMapClassName = $this->getTableMapClassName();
         $table = $this->getTable();
-
-        if (!$table->hasCompositePrimaryKey()) {
-            $pkType = 'mixed';
-            $codeExample = '$obj  = $c->findPk(12, $con);';
+        if (!$table->hasPrimaryKey()) {
+            $pkType = 'never';
+            $codeExample = '';
+        } elseif (!$table->hasCompositePrimaryKey()) {
+            $pkType = $table->getPrimaryKey()[0]->resolveQualifiedType();
+            $codeExample = '$obj = $c->findPk(12, $con);';
         } else {
-            $colNames = array_map(fn (Column $col) => '$' . $col->getName(), $table->getPrimaryKey());
-            $pkType = 'array[' . implode(', ', $colNames) . ']';
-            $randomPkValues = array_slice([12, 34, 56, 78, 91], 0, count($colNames));
+            $columnTypes = array_map(fn (Column $col) => "{$col->resolveQualifiedType()}|null", $table->getPrimaryKey());
+            $pkType = 'array{' . implode(', ', $columnTypes) . '}';
 
+            $colNames = array_map(fn (Column $col) => '$' . $col->getName(), $table->getPrimaryKey());
+            $randomPkValues = array_slice([12, 34, 56, 78, 91], 0, count($colNames));
             $pkCsv = implode(', ', $randomPkValues);
-            $codeExample = "\$obj = \$c->findPk(array($pkCsv), \$con);";
+            $codeExample = "\$obj = \$c->findPk([$pkCsv], \$con);";
         }
 
-        $buildPoolKeyStatement = $this->getBuildPoolKeyStatement($table->getPrimaryKey());
+        if ($table->hasPrimaryKey()) {
+            $buildPoolKeyStatement = $this->getBuildPoolKeyStatement($table->getPrimaryKey());
+            $buildPoolKeyStatement = str_replace('$key === null || ', '', $buildPoolKeyStatement); // remove null check to appease analyzer
+        }
 
         $script .= "
     /**
@@ -532,28 +476,20 @@ class QueryBuilder extends AbstractOMBuilder
      * </code>
      *
      * @param $pkType \$key Primary key to use for the query
-     * @param \Propel\Runtime\Connection\ConnectionInterface \$con an optional connection object
+     * @param \Propel\Runtime\Connection\ConnectionInterface|null \$con an optional connection object
      *
-     * @return $class|array|mixed the result, formatted by the current formatter
+     * @return $objectClassNameFq|mixed|array the result, formatted by the current formatter
      */
     public function findPk(\$key, ?ConnectionInterface \$con = null)
     {";
 
         if (!$table->hasPrimaryKey()) {
-            $this->declareClass('Propel\\Runtime\\Exception\\LogicException');
-            $script .= "
-        throw new LogicException('The {$this->getObjectName()} object has no primary key');
-    }
-";
+            $this->addFunctionBodyNoPkException($script);
 
             return;
         }
 
         $script .= "
-        if (\$key === null) {
-            return null;
-        }
-
         if (\$con === null) {
             \$con = Propel::getServiceContainer()->getReadConnection({$this->getTableMapClass()}::DATABASE_NAME);
         }
@@ -571,8 +507,7 @@ class QueryBuilder extends AbstractOMBuilder
         }
 
         return \$this->findPkSimple(\$key, \$con);
-    }
-";
+    }\n";
     }
 
     /**
@@ -596,22 +531,32 @@ class QueryBuilder extends AbstractOMBuilder
     protected function findPkSimple(\$key, ConnectionInterface \$con)
     {
         throw new PropelException('$tableName is declared abstract, you cannot query it.');
-    }
-";
+    }\n";
 
             return;
         }
 
-        $tableMapClassName = $this->getTableMapClassName();
-        $ARClassName = $this->getObjectClassName();
-        $this->declareClassFromBuilder($this->getStubObjectBuilder());
         $this->declareClasses('\PDO');
+
+        $tableMapClassName = $this->tableNames->useTablemapClassName();
+        $objectClassName = $this->tableNames->useObjectStubClassName();
+        $objectClassNameFq = $this->tableNames->useObjectStubClassName(false);
 
         $isBulkLoad = $table->isBulkLoadTable();
         $query = $this->buildSimpleSqlSelectStatement($table, !$isBulkLoad);
         $buildPoolKeyStatement = $this->getBuildPoolKeyStatement($table->getPrimaryKey(), $isBulkLoad ? '$pk' : '$key');
         $bindValueStatements = $isBulkLoad ? '' : $this->buildPrimaryKeyColumnBindingStatements($table);
-        $ifWhile = $isBulkLoad ? 'while' : 'if';
+
+        $getRowFromFetcherCode = !$isBulkLoad
+            ? "
+        \$row = \$stmt->fetch(PDO::FETCH_NUM);
+        if (\$row) {"
+            : "
+        while (true) {
+            \$row = \$stmt->fetch(PDO::FETCH_NUM);
+            if (!\$row) {
+                break;
+            }";
 
             $script .= "
     /**
@@ -623,32 +568,36 @@ class QueryBuilder extends AbstractOMBuilder
      *
      * @throws \\Propel\\Runtime\\Exception\\PropelException
      *
-     * @return $ARClassName A model object, or null if the key is not found
+     * @return $objectClassNameFq|null A model object, or null if the key is not found
      */
-    protected function findPkSimple(\$key, ConnectionInterface \$con)
+    protected function findPkSimple(\$key, ConnectionInterface \$con): ?$objectClassName
     {
         \$sql = '$query';
+        \$stmt = \$con->prepare(\$sql);
+        if (is_bool(\$stmt)) {
+            throw new PropelException('Failed to initialize statement');
+        }$bindValueStatements
         try {
-            \$stmt = \$con->prepare(\$sql);$bindValueStatements
             \$stmt->execute();
         } catch (Exception \$e) {
             Propel::log(\$e->getMessage(), Propel::LOG_ERR);
+
             throw new PropelException(sprintf('Unable to execute SELECT statement [%s]', \$sql), 0, \$e);
         }
         \$obj = null;
-        $ifWhile (\$row = \$stmt->fetch(PDO::FETCH_NUM)) {";
+        $getRowFromFetcherCode";
 
         if (!$usesConcreteInheritance) {
-            $classNameLiteral = $ARClassName;
+            $classNameLiteral = $objectClassName;
         } else {
             $classNameLiteral = '$cls';
 
             $script .= "
-            {$classNameLiteral} = {$tableMapClassName}::getOMClass(\$row, 0, false);";
+            {$classNameLiteral} = {$tableMapClassName}::getOMClass(\$row, 0, false);
+            /** @var $objectClassNameFq \$obj */";
         }
 
         $script .= "
-            /** @var $ARClassName \$obj */
             \$obj = new $classNameLiteral();
             \$obj->hydrate(\$row);";
 
@@ -658,25 +607,26 @@ class QueryBuilder extends AbstractOMBuilder
         }
 
         $script .= "
-            {$tableMapClassName}::addInstanceToPool(\$obj, $buildPoolKeyStatement);
+            \$poolKey = $buildPoolKeyStatement;
+            {$tableMapClassName}::addInstanceToPool(\$obj, \$poolKey);
         }
         \$stmt->closeCursor();";
 
-        if ($isBulkLoad) {
+        if (!$isBulkLoad) {
+            $script .= "
+
+        return \$obj;
+    }\n";
+        } else {
             $buildPoolKeyStatementFromKey = $this->getBuildPoolKeyStatement($table->getPrimaryKey());
 
             $script .= "
         \$poolKey = $buildPoolKeyStatementFromKey;
+        /** @var $objectClassNameFq \$model */
+        \$model = {$tableMapClassName}::getInstanceFromPool(\$poolKey);
 
-        return {$tableMapClassName}::getInstanceFromPool(\$poolKey);
-    }
-";
-        } else {
-            $script .= "
-
-        return \$obj;
-    }
-";
+        return \$model;
+    }\n";
         }
     }
 
@@ -724,7 +674,7 @@ class QueryBuilder extends AbstractOMBuilder
     {
         $platform = $this->getPlatform();
         $columns = (array)$table->getPrimaryKey();
-        $tab = '            ';
+        $tab = '        ';
 
         if (!$table->hasCompositePrimaryKey()) {
             return $platform->getColumnBindingPHP($columns[0], "':p0'", $keyVariableLiteral, $tab);
@@ -745,18 +695,20 @@ class QueryBuilder extends AbstractOMBuilder
      * @param array<\Propel\Generator\Model\Column> $pkColumns Columns used to build hash.
      * @param string $varLiteral The literal for the variable holding the key in the script.
      *
+     * @throws \LogicException
+     *
      * @return string
      */
     protected function getBuildPoolKeyStatement(array $pkColumns, string $varLiteral = '$key'): string
     {
         $numberOfPks = count($pkColumns);
-        if ($numberOfPks === 1) {
-            return $this->getTableMapBuilder()->getInstancePoolKeySnippet($varLiteral);
+        if ($numberOfPks === 0) {
+            throw new LogicException("PoolKeyStatement cannot be created for table without PKs (in {$this->getQualifiedClassName()}).");
         }
-        $pkIndexes = range(0, $numberOfPks - 1);
-        $pkVariableLiteral = preg_filter('/(\d+)/', $varLiteral . '[${1}]', $pkIndexes); // put ids into "$key[]"
 
-        return $this->getTableMapBuilder()->getInstancePoolKeySnippet($pkVariableLiteral);
+        return $numberOfPks === 1
+            ? "(string)$varLiteral"
+            : "serialize(array_map(fn (\$k) => (string)\$k, $varLiteral))";
     }
 
     /**
@@ -768,15 +720,14 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addFindPkComplex(string &$script): void
     {
-        $class = $this->getObjectClassName();
-        $table = $this->getTable();
-
-        // this method is not needed if the table has no primary key
-        if (!$table->hasPrimaryKey()) {
+        if (!$this->getTable()->hasPrimaryKey()) {
             return;
         }
-
         $this->declareClasses('\Propel\Runtime\Connection\ConnectionInterface');
+
+        $modelClassName = $this->tableNames->useObjectBaseClassName();
+        $modelClassNameFq = $this->tableNames->useObjectBaseClassName(false);
+
         $script .= "
     /**
      * Find object by primary key.
@@ -784,7 +735,7 @@ class QueryBuilder extends AbstractOMBuilder
      * @param mixed \$key Primary key to use for the query
      * @param \Propel\Runtime\Connection\ConnectionInterface \$con A connection object
      *
-     * @return " . $class . "|array|mixed the result, formatted by the current formatter
+     * @return $modelClassNameFq|mixed|array|null the result, formatted by the current formatter
      */
     protected function findPkComplex(\$key, ConnectionInterface \$con)
     {
@@ -795,8 +746,21 @@ class QueryBuilder extends AbstractOMBuilder
             ->doSelect(\$con);
 
         return \$criteria->getFormatter()->init(\$criteria)->formatOne(\$dataFetcher);
+    }\n";
     }
-";
+
+    /**
+     * @param string $script
+     *
+     * @return void
+     */
+    protected function addFunctionBodyNoPkException(string &$script): void
+    {
+        $this->declareClass('Propel\\Runtime\\Exception\\LogicException');
+
+            $script .= "
+        throw new LogicException('The {$this->getObjectName()} object has no primary key');
+    }\n";
     }
 
     /**
@@ -809,13 +773,13 @@ class QueryBuilder extends AbstractOMBuilder
     protected function addFindPks(string &$script): void
     {
         $this->declareClasses(
-            '\Propel\Runtime\Collection\Collection',
             '\Propel\Runtime\Connection\ConnectionInterface',
             '\Propel\Runtime\Propel',
         );
         $table = $this->getTable();
         $pks = $table->getPrimaryKey();
         $count = count($pks);
+        $modelClassNameFq = $this->tableNames->useObjectBaseClassName(false);
         $script .= "
     /**
      * Find objects by primary key
@@ -829,25 +793,30 @@ class QueryBuilder extends AbstractOMBuilder
         }
         $script .= "
      * </code>
-     * @param array \$keys Primary keys to use for the query
-     * @param \Propel\Runtime\Connection\ConnectionInterface \$con an optional connection object
      *
-     * @return Collection|array|mixed the list of results, formatted by the current formatter
+     * @param array \$keys Primary keys to use for the query
+     * @param \Propel\Runtime\Connection\ConnectionInterface|null \$con an optional connection object";
+        if (!$table->hasPrimaryKey()) {
+            $script .= "
+     *
+     * @throws \LogicException";
+        }
+
+        $script .= "
+     *
+     * @return \Propel\Runtime\Collection\Collection<$modelClassNameFq>|mixed|array the list of results, formatted by the current formatter
      */
     public function findPks(\$keys, ?ConnectionInterface \$con = null)
     {";
+
         if (!$table->hasPrimaryKey()) {
-            $this->declareClass('Propel\\Runtime\\Exception\\LogicException');
-            $script .= "
-        throw new LogicException('The {$this->getObjectName()} object has no primary key');
-    }
-";
+            $this->addFunctionBodyNoPkException($script);
 
             return;
         }
 
         $script .= "
-        if (null === \$con) {
+        if (!\$con) {
             \$con = Propel::getServiceContainer()->getReadConnection(\$this->getDbName());
         }
         \$this->basePreSelect(\$con);
@@ -857,8 +826,7 @@ class QueryBuilder extends AbstractOMBuilder
             ->doSelect(\$con);
 
         return \$criteria->getFormatter()->init(\$criteria)->format(\$dataFetcher);
-    }
-";
+    }\n";
     }
 
     /**
@@ -870,6 +838,8 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addFilterByPrimaryKey(string &$script): void
     {
+        $table = $this->getTable();
+
         $script .= "
     /**
      * Filter the query by primary key
@@ -880,14 +850,9 @@ class QueryBuilder extends AbstractOMBuilder
      */
     public function filterByPrimaryKey(\$key)
     {";
-        $table = $this->getTable();
 
         if (!$table->hasPrimaryKey()) {
-            $this->declareClass('Propel\\Runtime\\Exception\\LogicException');
-            $script .= "
-        throw new LogicException('The {$this->getObjectName()} object has no primary key');
-    }
-";
+            $this->addFunctionBodyNoPkException($script);
 
             return;
         }
@@ -909,7 +874,6 @@ class QueryBuilder extends AbstractOMBuilder
             // composite primary key
             $i = 0;
             foreach ($pks as $col) {
-                $const = $this->getColumnConstant($col);
                 $colName = $col->getName();
                 $script .= "
         \$resolvedColumn = \$this->resolveLocalColumnByName('$colName');
@@ -921,8 +885,7 @@ class QueryBuilder extends AbstractOMBuilder
         return \$this;";
         }
         $script .= "
-    }
-";
+    }\n";
     }
 
     /**
@@ -934,35 +897,30 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addFilterByPrimaryKeys(string &$script): void
     {
+        $table = $this->getTable();
+
         $script .= "
     /**
      * Filter the query by a list of primary keys
      *
-     * @param array|int \$keys The list of primary key to use for the query
+     * @param array \$keys The list of primary key values to use for the query
      *
      * @return \$this
      */
-    public function filterByPrimaryKeys(\$keys)
+    public function filterByPrimaryKeys(array \$keys)
     {";
-        $table = $this->getTable();
 
         if (!$table->hasPrimaryKey()) {
-            $this->declareClass('Propel\\Runtime\\Exception\\LogicException');
-            $script .= "
-        throw new LogicException('The {$this->getObjectName()} object has no primary key');
-    }
-";
+            $this->addFunctionBodyNoPkException($script);
 
             return;
         }
 
-        $tableMapClassName = $this->getTableMapClassName();
         $pks = $table->getPrimaryKey();
         if (count($pks) === 1) {
             // simple primary key
             $col = $pks[0];
             $colName = $col->getName();
-            $const = $this->getColumnConstant($col);
             $script .= "
         \$resolvedColumn = \$this->resolveLocalColumnByName('$colName');
         \$this->addUsingOperator(\$resolvedColumn, \$keys, Criteria::IN);
@@ -971,7 +929,7 @@ class QueryBuilder extends AbstractOMBuilder
         } else {
             // composite primary key
             $script .= "
-        if (empty(\$keys)) {
+        if (!\$keys) {
             \$this->addFilter(null, '1<>1', Criteria::CUSTOM);
 
             return \$this;
@@ -1024,11 +982,13 @@ class QueryBuilder extends AbstractOMBuilder
      * \$query->filterBy$colPhpName(array(12, 34)); // WHERE $colName IN (12, 34)
      * \$query->filterBy$colPhpName(array('min' => 12)); // WHERE $colName > 12
      * </code>";
+
             if ($col->isForeignKey()) {
+                $script .= "
+     *";
                 foreach ($col->getForeignKeys() as $fk) {
                     $script .= "
-     *
-     * @see       filterBy" . $this->getFKPhpNameAffix($fk) . '()';
+     * @see static::filterBy" . $fk->getIdentifier() . '()';
                 }
             }
             $script .= "
@@ -1054,17 +1014,17 @@ class QueryBuilder extends AbstractOMBuilder
      *              Use associative array('min' => \$minValue, 'max' => \$maxValue) for intervals.";
         } elseif ($col->getType() == PropelTypes::PHP_ARRAY) {
             $script .= "
-     * @param array \$$variableName The values to use as filter.";
+     * @param array|null \$$variableName The values to use as filter.";
         } elseif ($col->isTextType()) {
             $script .= "
      * Example usage:
      * <code>
-     * \$query->filterBy$colPhpName('fooValue');   // WHERE $colName = 'fooValue'
+     * \$query->filterBy$colPhpName('fooValue'); // WHERE $colName = 'fooValue'
      * \$query->filterBy$colPhpName('%fooValue%', Criteria::LIKE); // WHERE $colName LIKE '%fooValue%'
      * \$query->filterBy$colPhpName(['foo', 'bar']); // WHERE $colName IN ('foo', 'bar')
      * </code>
      *
-     * @param string|string[] \$$variableName The value to use as filter.";
+     * @param array<string>|string|null \$$variableName The value to use as filter.";
         } elseif ($col->isBooleanType()) {
             $script .= "
      * Example usage:
@@ -1073,17 +1033,26 @@ class QueryBuilder extends AbstractOMBuilder
      * \$query->filterBy$colPhpName('yes'); // WHERE $colName = true
      * </code>
      *
-     * @param bool|string \$$variableName The value to use as filter.
-     *              Non-boolean arguments are converted using the following rules:
-     *                * 1, '1', 'true',  'on',  and 'yes' are converted to boolean true
-     *                * 0, '0', 'false', 'off', and 'no'  are converted to boolean false
-     *              Check on string values is case insensitive (so 'FaLsE' is seen as 'false').";
+     * @param string|bool|null \$$variableName The value to use as filter.
+     *      Non-boolean arguments are converted using the following rules:
+     *          - 1, '1', 'true', 'on', and 'yes' are converted to boolean true
+     *          - 0, '0', 'false', 'off', and 'no' are converted to boolean false
+     *      Check on string values is case insensitive (so 'FaLsE' is seen as 'false').";
         } else {
             $script .= "
      * @param mixed \$$variableName The value to use as filter";
         }
+
         $script .= "
-     * @param string|null \$comparison Operator to use for the column comparison, defaults to Criteria::EQUAL
+     * @param string|null \$comparison Operator to use for the column comparison, defaults to Criteria::EQUAL";
+
+        if ($col->isSetType() || $col->getType() === PropelTypes::ENUM) {
+            $script .= "
+     *
+     * @throws \Propel\Runtime\Exception\PropelException";
+        }
+
+        $script .= "
      *
      * @return \$this
      */
@@ -1117,7 +1086,8 @@ class QueryBuilder extends AbstractOMBuilder
         }";
         } elseif ($col->getType() == PropelTypes::PHP_ARRAY) {
             $script .= "
-        if ( \$comparison === null 
+        if (
+            \$comparison === null 
             || \$comparison === Criteria::CONTAINS_ALL 
             || \$comparison === Criteria::CONTAINS_SOME 
             || \$comparison === Criteria::CONTAINS_NONE
@@ -1178,7 +1148,7 @@ class QueryBuilder extends AbstractOMBuilder
                 if (!in_array(\$value, \$valueSet)) {
                     throw new PropelException(sprintf('Value \"%s\" is not accepted in this enumerated column', \$value));
                 }
-                \$convertedValues [] = array_search(\$value, \$valueSet);
+                \$convertedValues[] = array_search(\$value, \$valueSet);
             }
             \$$variableName = \$convertedValues;
             if (\$comparison === null) {
@@ -1193,7 +1163,7 @@ class QueryBuilder extends AbstractOMBuilder
         } elseif ($col->isBooleanType()) {
             $script .= "
         if (is_string(\$$variableName)) {
-            \$$variableName = in_array(strtolower(\$$variableName), array('false', 'off', '-', 'no', 'n', '0', ''), true) ? false : true;
+            \$$variableName = in_array(strtolower(\$$variableName), ['false', 'off', '-', 'no', 'n', '0', ''], true) ? false : true;
         }";
         } elseif ($col->isUuidBinaryType()) {
             $uuidSwapFlag = $this->getUuidSwapFlagLiteral();
@@ -1224,6 +1194,7 @@ class QueryBuilder extends AbstractOMBuilder
         $script .= "
     /**
      * Filter the query on the $colName column
+     *
      * @param mixed \$$variableName The value to use as filter
      * @param string|null \$comparison Operator to use for the column comparison, defaults to Criteria::CONTAINS_ALL
      *
@@ -1269,7 +1240,8 @@ class QueryBuilder extends AbstractOMBuilder
         $script .= "
     /**
      * Filter the query on the $colName column
-     * @param mixed \$$variableName The value to use as filter
+     *
+     * @param mixed|null \$$variableName The value to use as filter
      * @param string \$comparison Operator to use for the column comparison, defaults to Criteria::CONTAINS_ALL
      *
      * @return \$this
@@ -1293,37 +1265,40 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addFilterByFk(string &$script, ForeignKey $fk): void
     {
-        $this->declareClasses(
-            '\Propel\Runtime\Collection\ObjectCollection',
-            '\Propel\Runtime\Exception\PropelException',
-        );
+        $this->declareClass('\Propel\Runtime\Exception\PropelException');
+        if (!$fk->isComposite()) {
+            $this->declareClass('\Propel\Runtime\Collection\ObjectCollection');
+        }
+
         $fkTable = $fk->getForeignTable();
-        $fkStubObjectBuilder = $this->getNewObjectBuilder($fkTable);
-        $this->declareClassFromBuilder($fkStubObjectBuilder);
-        $fkPhpName = $this->getClassNameFromBuilder($fkStubObjectBuilder, true);
-        $relationName = $this->getFKPhpNameAffix($fk);
+
+        $targetObjectBuilder = $this->getNewObjectBuilder($fkTable);
+        $targetClassName = $this->getClassNameFromBuilder($targetObjectBuilder);
+        $targetClassNameFq = $this->getClassNameFromBuilder($targetObjectBuilder, true);
+
+        $relationName = $fk->getIdentifier();
         $objectName = '$' . $fkTable->getCamelCaseName();
         $script .= "
     /**
-     * Filter the query by a related $fkPhpName object
+     * Filter the query by a related $targetClassName object
      *";
         if ($fk->isComposite()) {
             $script .= "
-     * @param $fkPhpName $objectName The related object to use as filter";
+     * @param $targetClassNameFq|null $objectName The related object to use as filter";
         } else {
             $script .= "
-     * @param $fkPhpName|ObjectCollection $objectName The related object(s) to use as filter";
+     * @param $targetClassNameFq|\Propel\Runtime\Collection\ObjectCollection<$targetClassNameFq> $objectName The related object(s) to use as filter";
         }
         $script .= "
      * @param string|null \$comparison Operator to use for the column comparison, defaults to Criteria::EQUAL
      *
      * @throws \\Propel\\Runtime\\Exception\\PropelException
      *
-     * @return \$this
+     * @return static
      */
     public function filterBy$relationName($objectName, ?string \$comparison = null)
     {
-        if ($objectName instanceof $fkPhpName) {
+        if ($objectName instanceof $targetClassName) {
             return \$this";
 
         foreach ($fk->getMapping() as $mapping) {
@@ -1356,10 +1331,10 @@ class QueryBuilder extends AbstractOMBuilder
         } else {";
         if ($fk->isComposite()) {
             $script .= "
-            throw new PropelException('filterBy$relationName() only accepts arguments of type $fkPhpName');";
+            throw new PropelException('filterBy$relationName() only accepts arguments of type $targetClassName');";
         } else {
             $script .= "
-            throw new PropelException('filterBy$relationName() only accepts arguments of type $fkPhpName or Collection');";
+            throw new PropelException('filterBy$relationName() only accepts arguments of type $targetClassName or Collection');";
         }
         $script .= "
         }
@@ -1377,14 +1352,14 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addFilterByRefFk(string &$script, ForeignKey $fk): void
     {
-        $this->declareClasses(
-            '\Propel\Runtime\Collection\ObjectCollection',
-            '\Propel\Runtime\Exception\PropelException',
-        );
+        $this->declareClass('\Propel\Runtime\Exception\PropelException');
+        $this->declareClass('\Propel\Runtime\Collection\ObjectCollection');
+
         $fkTable = $this->getTable()->getDatabase()->getTable($fk->getTableName());
-        $fkStubObjectBuilder = $this->getNewObjectBuilder($fkTable);
-        $targetClassName = $this->declareClassFromBuilder($fkStubObjectBuilder);
-        $targetClassNameFq = $this->getClassNameFromBuilder($fkStubObjectBuilder, true);
+        $targetObjectBuilder = $this->getNewObjectBuilder($fkTable);
+        $targetClassName = $this->declareClassFromBuilder($targetObjectBuilder);
+        $targetClassNameFq = $this->getClassNameFromBuilder($targetObjectBuilder, true);
+
         $relationName = $fk->getIdentifierReversed();
         $objectName = '$' . $fkTable->getCamelCaseName();
         $script .= "
@@ -1394,11 +1369,13 @@ class QueryBuilder extends AbstractOMBuilder
      * @param $targetClassNameFq|\Propel\Runtime\Collection\ObjectCollection<$targetClassNameFq> $objectName the related object to use as filter
      * @param string|null \$comparison Operator to use for the column comparison, defaults to Criteria::EQUAL
      *
+     * @throws \Propel\Runtime\Exception\PropelException
+     *
      * @return \$this
      */
     public function filterBy$relationName($targetClassName|ObjectCollection $objectName, ?string \$comparison = null)
     {
-        if ($objectName instanceof $targetClassNameFq) {
+        if ($objectName instanceof $targetClassName) {
             \$this";
         foreach ($fk->getInverseMapping() as $mapping) {
             /** @var \Propel\Generator\Model\Column $foreignColumn */
@@ -1513,7 +1490,8 @@ class QueryBuilder extends AbstractOMBuilder
         \$join->setJoinType(\$joinType);
         \$leftAlias = \$this->useAliasInSQL ? \$this->getModelAlias() : null;
         \$join->setupJoinCondition(\$this, \$relationMap, \$leftAlias, \$relationAlias);
-        if (\$previousJoin = \$this->getPreviousJoin()) {
+        \$previousJoin = \$this->getPreviousJoin();
+        if (\$previousJoin instanceof ModelJoin) {
             \$join->setPreviousJoin(\$previousJoin);
         }
 
@@ -1593,13 +1571,13 @@ class QueryBuilder extends AbstractOMBuilder
      *
      * @see useQuery()
      *
-     * @param string \$relationAlias optional alias for the relation,
+     * @param string|null \$relationAlias optional alias for the relation,
      *                                   to be used as main alias in the secondary query
      * @param string \$joinType Accepted values are null, 'left join', 'right join', 'inner join'
      *
      * @return $queryClass<static> A secondary query class using the current class as primary query
      */
-    public function use" . $relationName . 'Query($relationAlias = null, $joinType = ' . $joinType . ")
+    public function use" . $relationName . 'Query(?string $relationAlias = null, string $joinType = ' . $joinType . ")
     {
         /** @var $queryClass<static> \$query */
         \$query = \$this->join" . $relationName . "(\$relationAlias, \$joinType)
@@ -1626,8 +1604,8 @@ class QueryBuilder extends AbstractOMBuilder
             'queryClass' => $queryClass,
             'relationDescription' => $this->getRelationDescription($relationName, $fkTable),
             'relationName' => $relationName,
-            'existsType' => ExistsQueryCriterion::TYPE_EXISTS,
-            'notExistsType' => ExistsQueryCriterion::TYPE_NOT_EXISTS,
+            'existsType' => ExistsFilter::TYPE_EXISTS,
+            'notExistsType' => ExistsFilter::TYPE_NOT_EXISTS,
         ];
         $templatePath = $this->getTemplatePath(__DIR__);
 
@@ -1654,8 +1632,6 @@ class QueryBuilder extends AbstractOMBuilder
             'queryClass' => $queryClass,
             'relationDescription' => $this->getRelationDescription($relationName, $fkTable),
             'relationName' => $relationName,
-            'inType' => trim(Criteria::IN),
-            'notInType' => trim(Criteria::NOT_IN),
         ];
         $templatePath = $this->getTemplatePath(__DIR__);
 
@@ -1696,10 +1672,8 @@ class QueryBuilder extends AbstractOMBuilder
     /**
      * Use the {$relationName} relation {$fkTable->getPhpName()} object
      *
-     * @param callable({$queryClass}):{$queryClass} \$callable A function working on the related query
-     *
+     * @param callable({$queryClass}<mixed>):{$queryClass}<mixed> \$callable A function working on the related query
      * @param string|null \$relationAlias optional alias for the relation
-     *
      * @param string|null \$joinType Accepted values are null, 'left join', 'right join', 'inner join'
      *
      * @return \$this
@@ -1711,7 +1685,7 @@ class QueryBuilder extends AbstractOMBuilder
     ) {
         \$relatedQuery = \$this->use{$relationName}Query(
             \$relationAlias,
-            \$joinType
+            \$joinType,
         );
         \$callable(\$relatedQuery);
         \$relatedQuery->endUse();
@@ -1729,26 +1703,30 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addFilterByCrossFK(string &$script, CrossRelation $crossFKs): void
     {
-        $relationName = $this->getRefFKPhpNameAffix($crossFKs->getIncomingForeignKey(), false);
+        $relationName = $crossFKs->getIncomingForeignKey()->getIdentifierReversed();
 
         foreach ($crossFKs->getCrossForeignKeys() as $crossFK) {
-            $crossRefTable = $crossFK->getTable();
-            $foreignTable = $crossFK->getForeignTable();
-            $fkPhpName = $foreignTable->getPhpName();
-            $crossTableName = $crossRefTable->getName();
+            $middleTable = $crossFK->getTable();
+            $targetTable = $crossFK->getForeignTable();
+
+            $targetObjectBuilder = $this->getNewObjectBuilder($targetTable);
+            $targetTableClassName = $this->declareClassFromBuilder($targetObjectBuilder);
+            $targetTableClassNameFq = $this->getClassNameFromBuilder($targetObjectBuilder, true);
+
+            $crossTableName = $middleTable->getName();
             $relName = $this->getFKPhpNameAffix($crossFK, false);
-            $objectName = '$' . $foreignTable->getCamelCaseName();
+            $objectName = '$' . $targetTable->getCamelCaseName();
             $script .= "
     /**
-     * Filter the query by a related $fkPhpName object
+     * Filter the query by a related $targetTableClassName object
      * using the $crossTableName table as cross reference
      *
-     * @param $fkPhpName $objectName the related object to use as filter
-     * @param string \$comparison Operator to use for the column comparison, defaults to Criteria::EQUAL and Criteria::IN for queries
+     * @param $targetTableClassNameFq $objectName the related object to use as filter
+     * @param string|null \$comparison Operator to use for the column comparison, defaults to Criteria::EQUAL and Criteria::IN for queries
      *
      * @return \$this
      */
-    public function filterBy{$relName}($objectName, ?string \$comparison = null)
+    public function filterBy{$relName}($targetTableClassName $objectName, ?string \$comparison = null)
     {
         \$this
             ->use{$relationName}Query()
@@ -1771,22 +1749,30 @@ class QueryBuilder extends AbstractOMBuilder
     protected function addPrune(string &$script): void
     {
         $table = $this->getTable();
-        $class = $this->getObjectClassName();
+        $modelClassName = $this->tableNames->useObjectStubClassName();
+        $modelClassNameFq = $this->tableNames->useObjectStubClassName(false);
         $objectName = '$' . $table->getCamelCaseName();
+        $pks = $table->getPrimaryKey();
 
         $script .= "
     /**
      * Exclude object from result
      *
-     * @param $class $objectName Object to remove from the list of results
+     * @param $modelClassNameFq|null $objectName Object to remove from the list of results";
+
+        if (count($pks) <= 1 && !$table->hasPrimaryKey()) {
+            $script .= "
+     *
+     * @throws \LogicException";
+        }
+        $script .= "
      *
      * @return \$this
      */
-    public function prune($objectName = null)
+    public function prune(?$modelClassName $objectName = null)
     {
         if ($objectName) {";
 
-        $pks = $table->getPrimaryKey();
         if (count($pks) > 1) {
             $col1 = array_shift($pks);
             $script .= "
@@ -1806,8 +1792,7 @@ class QueryBuilder extends AbstractOMBuilder
         } else {
             $this->declareClass('Propel\\Runtime\\Exception\\LogicException');
             $script .= "
-            throw new LogicException('{$this->getObjectName()} object has no primary key');
-";
+            throw new LogicException('{$this->getObjectName()} object has no primary key');\n";
         }
         $script .= "
         }
@@ -1836,13 +1821,14 @@ class QueryBuilder extends AbstractOMBuilder
      * Code to execute before every SELECT statement
      *
      * @param \Propel\Runtime\Connection\ConnectionInterface \$con The connection object used by the query
+     *
+     * @return void
      */
     protected function basePreSelect(ConnectionInterface \$con): void
     {" . $behaviorCode . "
 
         \$this->preSelect(\$con);
-    }
-";
+    }\n";
     }
 
     /**
@@ -1865,14 +1851,13 @@ class QueryBuilder extends AbstractOMBuilder
      *
      * @param \Propel\Runtime\Connection\ConnectionInterface \$con The connection object used by the query
      *
-     *  @return int|null
+     * @return int|null
      */
     protected function basePreDelete(ConnectionInterface \$con): ?int
     {" . $behaviorCode . "
 
         return \$this->preDelete(\$con);
-    }
-";
+    }\n";
     }
 
     /**
@@ -1895,14 +1880,14 @@ class QueryBuilder extends AbstractOMBuilder
      *
      * @param int \$affectedRows the number of deleted rows
      * @param \Propel\Runtime\Connection\ConnectionInterface \$con The connection object used by the query
+     *
      * @return int|null
      */
     protected function basePostDelete(int \$affectedRows, ConnectionInterface \$con): ?int
     {" . $behaviorCode . "
 
         return \$this->postDelete(\$affectedRows, \$con);
-    }
-";
+    }\n";
     }
 
     /**
@@ -1933,8 +1918,7 @@ class QueryBuilder extends AbstractOMBuilder
     {" . $behaviorCode . "
 
         return \$this->preUpdate(\$values, \$con, \$forceIndividualSaves);
-    }
-";
+    }\n";
     }
 
     /**
@@ -1964,8 +1948,7 @@ class QueryBuilder extends AbstractOMBuilder
     {" . $behaviorCode . "
 
         return \$this->postUpdate(\$affectedRows, \$con);
-    }
-";
+    }\n";
     }
 
     /**
@@ -2019,26 +2002,28 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addDelete(string &$script): void
     {
+        $this->declareClass('\Propel\Runtime\ActiveQuery\ModelCriteria');
+        $tableMapClassName = $this->getTableMapClass();
+
         $script .= "
     /**
      * Performs a DELETE on the database based on the current ModelCriteria
      *
-     * @param \Propel\Runtime\Connection\ConnectionInterface \$con the connection to use
-     * @return int The number of affected rows (if supported by underlying database driver).  This includes CASCADE-related rows
+     * @param \Propel\Runtime\Connection\ConnectionInterface|null \$con the connection to use
+     *
+     * @return int The number of affected rows (if supported by underlying database driver). This includes CASCADE-related rows
      *                         if supported by native driver or if emulated using Propel.
-     * @throws \Propel\Runtime\Exception\PropelException Any exceptions caught during processing will be
-     *                         rethrown wrapped into a PropelException.
      */
     public function delete(?ConnectionInterface \$con = null): int
     {
-        if (null === \$con) {
-            \$con = Propel::getServiceContainer()->getWriteConnection(" . $this->getTableMapClass() . "::DATABASE_NAME);
+        if (!\$con) {
+            \$con = Propel::getServiceContainer()->getWriteConnection({$tableMapClassName}::DATABASE_NAME);
         }
 
         \$criteria = \$this;
 
         // Set the correct dbName
-        \$criteria->setDbName(" . $this->getTableMapClass() . "::DATABASE_NAME);
+        \$criteria->setDbName({$tableMapClassName}::DATABASE_NAME);
 
         // use transaction because \$criteria could contain info
         // for more than one table or we could emulating ON DELETE CASCADE, etc.
@@ -2063,17 +2048,13 @@ class QueryBuilder extends AbstractOMBuilder
         }
 
         $script .= "
-            {$this->getTableMapClassName()}::removeInstanceFromPool(\$criteria);
-        ";
-
-        $script .= "
+            {$tableMapClassName}::removeInstanceFromPool(\$criteria);
             \$affectedRows += ModelCriteria::delete(\$con);
-            {$this->getTableMapClassName()}::clearRelatedInstancePool();
+            {$tableMapClassName}::clearRelatedInstancePool();
 
             return \$affectedRows;
         });
-    }
-";
+    }\n";
     }
 
     /**
@@ -2097,6 +2078,7 @@ class QueryBuilder extends AbstractOMBuilder
      * This method should be used within a transaction if possible.
      *
      * @param \Propel\Runtime\Connection\ConnectionInterface \$con
+     *
      * @return int The number of affected rows (if supported by underlying database driver).
      */
     protected function doOnDeleteCascade(ConnectionInterface \$con): int
@@ -2112,47 +2094,46 @@ class QueryBuilder extends AbstractOMBuilder
         foreach ($table->getReferrers() as $fk) {
             // $fk is the foreign key in the other table, so localTableName will
             // actually be the table name of other table
-            $tblFK = $fk->getTable();
+            $foreignTable = $fk->getTable();
 
-            $joinedTableTableMapBuilder = $this->getNewTableMapBuilder($tblFK);
-
-            if (!$tblFK->isForReferenceOnly()) {
+            if ($foreignTable->isForReferenceOnly() || $fk->getOnDelete() !== ForeignKey::CASCADE) {
                 // we can't perform operations on tables that are
                 // not within the schema (i.e. that we have no map for, etc.)
+                continue;
+            }
 
-                $fkClassName = $joinedTableTableMapBuilder->getObjectClassName();
+            $foreignTableMapBuilder = $this->getNewTableMapBuilder($foreignTable);
+            $this->declareClassFromBuilder($foreignTableMapBuilder);
+            $fkClassName = $foreignTableMapBuilder->getObjectClassName();
+            $foreignQueryClassName = $this->declareClassFromBuilder($foreignTableMapBuilder->getStubQueryBuilder());
 
-                if ($fk->getOnDelete() === ForeignKey::CASCADE) {
-                    // backwards on purpose
-                    $columnNamesF = $fk->getLocalColumns();
-                    $columnNamesL = $fk->getForeignColumns();
+            // backwards on purpose
+            $localColumnNames = $fk->getLocalColumns();
+            $foreignColumnNames = $fk->getForeignColumns();
 
-                    $this->declareClassFromBuilder($joinedTableTableMapBuilder->getTableMapBuilder());
-
-                    $script .= "
+            $script .= "
 
             // delete related $fkClassName objects
-            \$query = new " . $joinedTableTableMapBuilder->getQueryClassName(true) . ";
-            ";
-                    for ($x = 0, $xlen = count($columnNamesF); $x < $xlen; $x++) {
-                        $columnFK = $tblFK->getColumn($columnNamesF[$x]);
-                        $columnL = $table->getColumn($columnNamesL[$x]);
+            \$affectedRows +=  {$foreignQueryClassName}::create()";
 
-                        $script .= "
-            \$query->add(" . $joinedTableTableMapBuilder->getColumnConstant($columnFK) . ', $obj->get' . $columnL->getPhpName() . '());';
-                    }
+            for ($x = 0, $xlen = count($localColumnNames); $x < $xlen; $x++) {
+                $columnFK = $foreignTable->getColumn($localColumnNames[$x]);
+                $columnL = $table->getColumn($foreignColumnNames[$x]);
+                $columnConstant = $foreignTableMapBuilder->getColumnConstant($columnFK);
+                $columnPhpName = $columnL->getPhpName();
 
-                    $script .= "
-            \$affectedRows += \$query->delete(\$con);";
-                }
+                $script .= "
+                ->add($columnConstant, \$obj->get{ $columnPhpName }())";
             }
+
+                $script .= "G
+                ->delete(\$con);";
         }
         $script .= "
         }
 
         return \$affectedRows;
-    }
-";
+    }\n";
     }
 
     // end addDoOnDeleteCascade
@@ -2179,6 +2160,7 @@ class QueryBuilder extends AbstractOMBuilder
      * This method should be used within a transaction if possible.
      *
      * @param \Propel\Runtime\Connection\ConnectionInterface \$con
+     *
      * @return void
      */
     protected function doOnDeleteSetNull(ConnectionInterface \$con): void
@@ -2195,45 +2177,38 @@ class QueryBuilder extends AbstractOMBuilder
             // $fk is the foreign key in the other table, so localTableName will
             // actually be the table name of other table
             $tblFK = $fk->getTable();
+
+            if ($tblFK->isForReferenceOnly() || $fk->getOnDelete() !== ForeignKey::SETNULL) {
+                continue;
+            }
+
             $refTableTableMapBuilder = $this->getNewTableMapBuilder($tblFK);
+            $fkClassName = $refTableTableMapBuilder->getObjectClassName();
+            // backwards on purpose
+            $columnNamesF = $fk->getLocalColumns();
+            $columnNamesL = $fk->getForeignColumns(); // should be same num as foreign
 
-            if (!$tblFK->isForReferenceOnly()) {
-                // we can't perform operations on tables that are
-                // not within the schema (i.e. that we have no map for, etc.)
+            $this->declareClassFromBuilder($refTableTableMapBuilder);
 
-                $fkClassName = $refTableTableMapBuilder->getObjectClassName();
-
-                if ($fk->getOnDelete() === ForeignKey::SETNULL) {
-                    // backwards on purpose
-                    $columnNamesF = $fk->getLocalColumns();
-                    $columnNamesL = $fk->getForeignColumns(); // should be same num as foreign
-
-                    $this->declareClassFromBuilder($refTableTableMapBuilder);
-
-                    $script .= "
+            $script .= "
             // set fkey col in related $fkClassName rows to NULL
             \$query = new " . $refTableTableMapBuilder->getQueryClassName(true) . "();
             \$updateValues = new Criteria();";
 
-                    for ($x = 0, $xlen = count($columnNamesF); $x < $xlen; $x++) {
-                        $columnFK = $tblFK->getColumn($columnNamesF[$x]);
-                        $columnL = $table->getColumn($columnNamesL[$x]);
-                        $script .= "
+            for ($x = 0, $xlen = count($columnNamesF); $x < $xlen; $x++) {
+                $columnFK = $tblFK->getColumn($columnNamesF[$x]);
+                $columnL = $table->getColumn($columnNamesL[$x]);
+                $script .= "
             \$query->add(" . $refTableTableMapBuilder->getColumnConstant($columnFK) . ', $obj->get' . $columnL->getPhpName() . "());
-            \$updateValues->add(" . $refTableTableMapBuilder->getColumnConstant($columnFK) . ", null);
-";
-                    }
-
-                    $script .= "\$query->update(\$updateValues, \$con);
-";
-                }
+            \$updateValues->add(" . $refTableTableMapBuilder->getColumnConstant($columnFK) . ", null);\n";
             }
+
+            $script .= "\$query->update(\$updateValues, \$con);\n";
         }
 
         $script .= "
         }
-    }
-";
+    }\n";
     }
 
     /**
@@ -2245,43 +2220,44 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addDoDeleteAll(string &$script): void
     {
-        $table = $this->getTable();
+        $tableName = $this->getTable()->getName();
+        $tableMapClassName = $this->getTableMapClass();
         $script .= "
     /**
-     * Deletes all rows from the " . $table->getName() . " table.
+     * Deletes all rows from the $tableName table.
      *
-     * @param \Propel\Runtime\Connection\ConnectionInterface \$con the connection to use
+     * @param \Propel\Runtime\Connection\ConnectionInterface|null \$con the connection to use
+     *
      * @return int The number of affected rows (if supported by underlying database driver).
      */
     public function doDeleteAll(?ConnectionInterface \$con = null): int
     {
-        if (null === \$con) {
-            \$con = Propel::getServiceContainer()->getWriteConnection(" . $this->getTableMapClass() . "::DATABASE_NAME);
+        if (!\$con) {
+            \$con = Propel::getServiceContainer()->getWriteConnection({$tableMapClassName}::DATABASE_NAME);
         }
 
         // use transaction because \$criteria could contain info
         // for more than one table or we could emulating ON DELETE CASCADE, etc.
         return \$con->transaction(function () use (\$con) {
-            \$affectedRows = 0; // initialize var to track total num of affected rows
-            ";
+            \$affectedRows = 0;";
         if ($this->isDeleteCascadeEmulationNeeded()) {
-            $script .= "\$affectedRows += \$this->doOnDeleteCascade(\$con);
-            ";
+            $script .= "
+            \$affectedRows += \$this->doOnDeleteCascade(\$con);";
         }
         if ($this->isDeleteSetNullEmulationNeeded()) {
-            $script .= "\$this->doOnDeleteSetNull(\$con);
-            ";
+            $script .= "
+            \$this->doOnDeleteSetNull(\$con);";
         }
-        $script .= "\$affectedRows += parent::doDeleteAll(\$con);
+        $script .= "
+            \$affectedRows += parent::doDeleteAll(\$con);
             // Because this db requires some delete cascade/set null emulation, we have to
             // clear the cached instance *after* the emulation has happened (since
             // instances get re-added by the select statement contained therein).
-            {$this->getTableMapClassName()}::clearInstancePool();
-            {$this->getTableMapClassName()}::clearRelatedInstancePool();
+            {$tableMapClassName}::clearInstancePool();
+            {$tableMapClassName}::clearRelatedInstancePool();
 
             return \$affectedRows;
         });
-    }
-";
+    }\n";
     }
 }

@@ -206,11 +206,17 @@ protected \$old{$relationName}{$aggregateName};
     {
         $relationName = $this->getRelationName($builder);
         $variableName = '$' . lcfirst($relationName . $this->getParameter('aggregate_name'));
+
+        $foreignKey = $this->getForeignKey();
+        $aggregatedObjectCollectionBuilder = $builder->getNewObjectCollectionBuilder($foreignKey->getForeignTable());
+        $aggregatedObjectCollectionClassName = $builder->declareClassFromBuilder($aggregatedObjectCollectionBuilder);
+        $aggregatedObjectCollectionClassNameFq = '\\' . $aggregatedObjectCollectionBuilder->getQualifiedClassName();
+
         $script = "
 /**
- * @var Collection
+ * @var $aggregatedObjectCollectionClassNameFq|null
  */
-protected {$variableName}s;\n\n";
+protected ?$aggregatedObjectCollectionClassName {$variableName}s = null;\n";
 
         return $script;
     }
@@ -238,6 +244,7 @@ protected {$variableName}s;\n\n";
         $foreignKey = $this->getForeignKey();
         $foreignQueryBuilder = $builder->getNewStubQueryBuilder($foreignKey->getForeignTable());
         $relationName = $this->getRelationName($builder);
+        $foreignQueryName = $builder->declareClassFromBuilder($foreignQueryBuilder);
 
         $builder->declareClassNamespace(
             $foreignKey->getForeignTable()->getPhpName() . 'Query',
@@ -249,7 +256,7 @@ protected {$variableName}s;\n\n";
             'relationName' => $relationName,
             'aggregateName' => $this->getParameter('aggregate_name'),
             'variableName' => lcfirst($relationName . $this->getParameter('aggregate_name')),
-            'foreignQueryName' => $foreignQueryBuilder->getClassName(),
+            'foreignQueryName' => $foreignQueryName,
             'refRelationName' => $builder->getRefFKPhpNameAffix($foreignKey),
         ]);
     }
